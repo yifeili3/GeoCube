@@ -1,6 +1,7 @@
 package geocube
 
 import (
+	"log"
     "fmt"
     "io/ioutil"
     "os"
@@ -11,7 +12,7 @@ import (
 
 const (
     dbRootPath = './db/'
-    dataArraySize = 10000000
+    dataArraySize = 10000000    // Jade: should this dataArraySize to be initialized as this much?
 )
 
 type DB struct{
@@ -33,6 +34,19 @@ type MetaCube struct{
    CubeArr      []CubeCell
    GlobalOffset int //global offset in DataArr
    DataArr      []byte
+}
+
+// Init DB initialize the metadata info from dbRootPath, construct a map of index -> metadatafilePath, where
+// index is the name of the file. e.g. map[1][dbRootPath/1.meta]
+func InitDB() (*DB, error){
+    files, err := ioutil.ReadDir(dbRootPath)
+    if err!=nil {
+        log.Fatal(err)
+    }
+    for _, filename in range files {
+        
+    }
+
 }
 
 func (db *DB) Read() error {
@@ -80,7 +94,7 @@ func (db *DB) Write(batch DataBatch) error{
 
 //TODO: Can be optimized
 func (db *DB) writeBatch(dPoint []DataPoint){
-    for p := range dPoint {
+    for _, p := range dPoint {
         //TODO: missing index function for each datpoint's index
         db.writeCubeCell(p)
     } 
@@ -136,19 +150,19 @@ func (db * DB) readEntry(offset int, length int) data []byte {
 func convertDPoint(d DataPoint) (res []byte,  header []byte) {
     lenFloat := len(d.FArr)
     if lenFloat > 0 {
-        for fl:= range d.FArr{
+        for _, fl:= range d.FArr{
             append(res, json.Marshal(fl))
         }
     }
     lenInt := len(d.IArr)
     if lenInt > 0{
-        for iNum := range d.IArr{
+        for _, iNum := range d.IArr{
             append(res, json.Marshal(iNum))
         }
     }
     lenString := len(d.SArr)
     if lenString > 0 {
-        for str := range d.SArr{
+        for _, str := range d.SArr{
             append(res, json.Marshal(str+"\t"))
         }
     }
