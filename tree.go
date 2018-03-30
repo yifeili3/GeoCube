@@ -7,6 +7,7 @@ import (
 	"math"
 	"errors"
 	"fmt"
+	"external_libs/quickselect"
 )
 
 const defaultBufSize = 128
@@ -117,9 +118,11 @@ func (dTree *DTree) initTree(pDims []uint, pCaps []uint, splitThresRatio float64
 
 // Assign single data point to the correct node 
 func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
-	currNodeInd := uint(0)
-	if err := dTree.nodes[currNodeInd].checkRange(point); err != nil{
-
+	currNodeInd := uint(startNodeInd)
+	if startNodeInd == 0{
+		if err := dTree.nodes[currNodeInd].checkRange(point); err != nil{
+			return err
+		}	
 	}
 
 	//find leaf node
@@ -151,12 +154,11 @@ func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
 	}
 }
 
-
 // Split the specific node in Tree and update the Tree accordingly
 func (dTree *DTree) splitLeaf(splitNodeInd uint) error{
 	
 	if dTree.nodes[splitNodeInd].currNum < len(dTree.nodeData[splitNodeInd]){
-		//To do: acquire data from worker, currently WRONG
+		//To do: acquire data from worker, currently WRONG if data are not stored
 		dTree.nodeData[splitNodeInd] = append(dTree.nodeData[splitNodeInd], dTree.nodeData[splitNodeInd])
 		if dTree.nodes[splitNodeInd].currNum != len(dTree.nodeData[splitNodeInd]){
 			err := errors.New(fmt.Sprintf("Incomplete data on node %d", splitNodeInd))
@@ -172,13 +174,15 @@ func (dTree *DTree) splitLeaf(splitNodeInd uint) error{
 		for i,p := range dTree.nodeData[splitNodeInd]{
 			extractedData[i] = p.getByDim(d)
 		}
-		//To do: implement quickselect currently WRONG, shoud find real median
-		dimCandidateValue[j] = extractedData[uint(math.Floor(len(extractedData)/2))]
+		targetPosition := uint(math.Floor(len(extractedData)/2.))
+		quickselect.QuickSelect(quickselect.Float64Slice(extractedData),targetPosition)
+		dimCandidateValue[j] = extractedData[targetPosition]
 
-		dimCandidateMetric[j] = math.Abs(dimCandidateValue[j]-(dTree.maxs[j]+dTree.mins[j])/2)/(dTree.maxs[j]-dTree.mins[j])
+		dimCandidateMetric[j] = math.Abs(dimCandidateValue[j] - 
+						(dTree.maxs[j]+dTree.mins[j])/2) / (dTree.maxs[j]-dTree.mins[j])
 	}
 
-	bestSplit = argmax(dimCandidateMetric)
+	bestSplit := argmax(dimCandidateMetric)
 	dTree.nodes[splitNodeInd].splitDim = dTree.dims[bestSplit] 
 	dTree.nodes[splitNodeInd].splitThres = dimCandidateValue[bestSplit] 	
 
@@ -188,10 +192,18 @@ func (dTree *DTree) splitLeaf(splitNodeInd uint) error{
 	dTree.nodes = append(dTree.nodes, new(DTreeNode))
 	dTree.nodeData = append(dTree.nodeData, nil)
 	dTree.nodes[splitNodeInd].rInd := len(dTree.nodes)-1	
+
+	// This line needs to act before assigning data
 	dTree.nodes[splitNodeInd].isLeaf = false
+	// move data into left right children
+	for _,p := range dTree.nodeData[splitNodeInd]{
+		dTree.assignData(&p, splitNodeInd)
+	}
 }
 
 // Batch update the tree assuming the tree has been loaded in the memory
-func (dTree *DTreeNode) updateTree(rows []DataPoint) error {
-
+func (dTree *DTreeNode) updateTree(points []DataPoint) error {
+	for i,p := range points{
+		dTree.assignData(&p, 0)
+	}
 }
