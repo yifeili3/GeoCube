@@ -15,6 +15,7 @@ type DataPoint struct{
 }
 
 type DataBatch struct{
+	CubeId	int
 	Dims []int
 	dPoint	[]DataPoint
 }
