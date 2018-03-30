@@ -1,4 +1,4 @@
-package utility
+package geocube
 
 import (
 	"io/ioutil"
@@ -6,6 +6,18 @@ import (
 	"net"
 	"strconv"
 )
+
+type DataPoint struct{
+	FArr	[]float64	
+	IArr	[]int
+	SArr	[]string
+}
+
+type DataBatch struct{
+	Dims []int
+	dPoint	[]DataPoint
+}
+
 
 // ExitOnErr print the err message and then exit the program
 func ExitOnErr(err error) {
