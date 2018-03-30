@@ -39,8 +39,8 @@ type DTreeNode struct {
 	splitVal float64
 }
 
-func (node *DTreeNode) initTreeNode(mins, maxs, dims, dCaps) {
-
+func initTreeNode(mins, maxs, dims, dCaps) *DTreeNode {
+	node := new(DTreeNode)
 	node.mins = make([]float64, len(mins))
 	node.maxs = make([]float64, len(maxs))
 	node.dims = make([]uint, len(dims))
@@ -51,6 +51,7 @@ func (node *DTreeNode) initTreeNode(mins, maxs, dims, dCaps) {
 		node.cells[i] = (node.maxs[i] - node.mins[i]) / c
 	}
 	node.isLeaf = true
+	return &node
 }
 
 func (node *DTreeNode) checkRange(point *DataPoint) error {
@@ -96,7 +97,8 @@ type DTree struct {
 }
 
 // Initialize the DTree structure, must be called after declaration
-func (dTree *DTree) initTree(pDims []uint, pCaps []uint, splitThresRatio float64) error {
+func initTree(pDims []uint, pCaps []uint, splitThresRatio float64, initMins, initMaxs []float64) *DTree {
+	dTree := new(DTree)
 	dTree.dims = make([]uint, len(pDims))
 	dTree.dims[:] = pDims[:]
 
@@ -104,7 +106,7 @@ func (dTree *DTree) initTree(pDims []uint, pCaps []uint, splitThresRatio float64
 	dTree.pCaps[:] = pCaps[:]
 
 	dTree.capacity = 1
-	for i,c := pCaps{
+	for _,c := range pCaps{
 		dTree.capacity *= c
 	}
 	dTree.splitThres = uint(math.Floor(dTree.capacity * splitThresRatio))
@@ -112,13 +114,13 @@ func (dTree *DTree) initTree(pDims []uint, pCaps []uint, splitThresRatio float64
 	dTree.nodes = make([]DTreeNode, 1)
 	dTree.nodeData = make([][]DataPoint, 1)
 
-	dTree.nodes[0] = new(DTree)
-	dTree.nodes[0].initTreeNode(dTree.mins, dTree.maxs, dTree.dims, dTree.dCaps)
+	dTree.nodes[0] = initTreeNode(initMins, initMaxs, dTree.dims, dTree.dCaps)
+	return dTree
 }
 
 // Assign single data point to the correct node 
 func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
-	currNodeInd := uint(startNodeInd)
+	currNodeInd := startNodeInd
 	if startNodeInd == 0{
 		if err := dTree.nodes[currNodeInd].checkRange(point); err != nil{
 			return err
@@ -127,7 +129,7 @@ func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
 
 	//find leaf node
 	for dTree.nodes[currNodeInd].isLeaf == false {
-		v = point.getByDim(dTree.nodes[currNodeInd].splitDim)
+		v := point.getByDim(dTree.nodes[currNodeInd].splitDim)
 		if v < dTree.nodes[currNodeInd].splitVal {
 			currNodeInd = dTree.nodes[currNodeInd].lInd
 		} else {
@@ -178,18 +180,30 @@ func (dTree *DTree) splitLeaf(splitNodeInd uint) error{
 		quickselect.QuickSelect(quickselect.Float64Slice(extractedData),targetPosition)
 		dimCandidateValue[j] = extractedData[targetPosition]
 
-		dimCandidateMetric[j] = math.Abs(dimCandidateValue[j] - 
-						(dTree.maxs[j]+dTree.mins[j])/2) / (dTree.maxs[j]-dTree.mins[j])
+		dimCandidateMetric[j] = math.Abs(dimCandidateValue[j] 
+			- (dTree.nodeData[splitNodeInd].maxs[j]+dTree.nodeData[splitNodeInd].mins[j])/2) 
+			/ (dTree.nodeData[splitNodeInd].maxs[j]-dTree.nodeData[splitNodeInd].mins[j])
 	}
 
 	bestSplit := argmax(dimCandidateMetric)
 	dTree.nodes[splitNodeInd].splitDim = dTree.dims[bestSplit] 
-	dTree.nodes[splitNodeInd].splitThres = dimCandidateValue[bestSplit] 	
+	dTree.nodes[splitNodeInd].splitThres = dimCandidateValue[bestSplit] 
+	
+	leftMaxs := make(float64, len(dTree.dims))
+	leftMaxs[:] = dTree.nodeData[splitNodeInd].maxs[:]
+	leftMax[bestSplit] = dimCandidateValue[bestSplit]
+	
+	rightMins := make(float64, len(dTree.dims))
+	rightMins[:] = dTree.nodeData[splitNodeInd].mins[:]
+	rightMins[bestSplit] = dimCandidateValue[bestSplit]
 
-	dTree.nodes = append(dTree.nodes, new(DTreeNode))
+	leftNode := initTreeNode(dTree.nodeData[splitNodeInd].mins, leftMax, dims, dCaps)
+	dTree.nodes = append(dTree.nodes, *leftNode)
 	dTree.nodeData = append(dTree.nodeData, nil)
 	dTree.nodes[splitNodeInd].lInd := len(dTree.nodes)-1
-	dTree.nodes = append(dTree.nodes, new(DTreeNode))
+
+	rightNode := initTreeNode(rightMins, dTree.nodeData[splitNodeInd].maxs, dims, dCaps)
+	dTree.nodes = append(dTree.nodes, *rightNode)
 	dTree.nodeData = append(dTree.nodeData, nil)
 	dTree.nodes[splitNodeInd].rInd := len(dTree.nodes)-1	
 
