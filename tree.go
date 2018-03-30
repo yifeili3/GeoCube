@@ -169,10 +169,10 @@ func (dTree *DTree) splitLeaf(splitNodeInd uint) error{
 		}
 	}
 
-	dimCandidateValue := make(float64, len(dTree.dims))
-	dimCandidateMetric := make(float64, len(dTree.dims))
+	dimCandidateValue := make([]float64, len(dTree.dims))
+	dimCandidateMetric := make([]float64, len(dTree.dims))
 	for j,d := range dTree.dims{
-		extractedData := make(float64, len(dTree.nodeData[splitNodeInd]))
+		extractedData := make([]float64, len(dTree.nodeData[splitNodeInd]))
 		for i,p := range dTree.nodeData[splitNodeInd]{
 			extractedData[i] = p.getByDim(d)
 		}
@@ -189,11 +189,11 @@ func (dTree *DTree) splitLeaf(splitNodeInd uint) error{
 	dTree.nodes[splitNodeInd].splitDim = dTree.dims[bestSplit] 
 	dTree.nodes[splitNodeInd].splitThres = dimCandidateValue[bestSplit] 
 	
-	leftMaxs := make(float64, len(dTree.dims))
+	leftMaxs := make([]float64, len(dTree.dims))
 	leftMaxs[:] = dTree.nodeData[splitNodeInd].maxs[:]
 	leftMax[bestSplit] = dimCandidateValue[bestSplit]
 	
-	rightMins := make(float64, len(dTree.dims))
+	rightMins := make([]float64, len(dTree.dims))
 	rightMins[:] = dTree.nodeData[splitNodeInd].mins[:]
 	rightMins[bestSplit] = dimCandidateValue[bestSplit]
 
