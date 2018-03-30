@@ -8,6 +8,7 @@ import (
 )
 
 type DataPoint struct{
+	Idx		int
 	FArr	[]float64	
 	IArr	[]int
 	SArr	[]string
