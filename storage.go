@@ -11,7 +11,7 @@ import (
 )
 
 const (
-    dbRootPath = './db/'
+    dbRootPath = "./db/"
     dataArraySize = 10000000    // Jade: should this dataArraySize to be initialized as this much?
 )
 
@@ -43,9 +43,15 @@ func InitDB() (*DB, error){
     if err!=nil {
         log.Fatal(err)
     }
-    for _, filename in range files {
-        
+
+    db := new(DB)
+
+    for _, file := range files {
+        index = strconv.Atoi(file.Name().split(".")[0])
+        path = dbRootPath + file.Name()
+        db.CubeMetaMap[index] = path
     }
+    return db, err
 
 }
 
@@ -59,9 +65,7 @@ func (db *DB) Load() error {
 }
 
 func (db *DB) Create(cubeId int, cubeSize int) error {
-    if _, exists:= db.CubeMetaMap[cubeId]; exists {
-        return fmt.Errorf("Cube %s already exists", cubeId)
-    } else if err: os.MkdirAll(path.Join(dbRootPath, cubeId), 0700); err != nil{
+    if err: os.MkdirAll(path.Join(dbRootPath, cubeId), 0700); err != nil{
         return err
     }
 
@@ -78,7 +82,7 @@ func (db *DB) CubeExists(cubeId int) bool {
 func (db *DB) Write(batch DataBatch) error{
     cubeSize := calculateCubeSize(batch.Dims)
     
-    if exists := db.CubeExists(batch.CubeID); !exists {  // cube not existed
+    if !db.CubeExists(batch.CubeID) {  // cube not existed TO MOD
         if err := db.Create(batch.CubeID, cubeSize); err != nil {
             fmt.Println("Fail to create cube")
             return err
@@ -104,7 +108,7 @@ func (db *DB) writeBatch(dPoint []DataPoint){
 func (db *DB) writeCubeCell(p DataPoint){
     //update metadata
     c := &db.Cube.CubeArr[p.Idx]
-    c.Count++
+    c.Count+=1
     globalOffsetCopy := db.Cube.GlobalOffset
     if c.CellHead == 0 && globalOffsetCopy != 0 {
         //only when no node in this cell
