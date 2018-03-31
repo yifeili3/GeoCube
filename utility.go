@@ -8,6 +8,9 @@ import (
 )
 
 type DataPoint struct {
+	// Idx is the fake 2d index of the data point for the particular
+	// treenode (cube), need to be updated everytime the inherited
+	// node is splited
 	Idx  int
 	FArr []float64
 	IArr []int
@@ -16,10 +19,14 @@ type DataPoint struct {
 
 type DataBatch struct {
 	CubeId  int
-	Dims    []int
+	Dims    []uint
 	Mins    []float64
 	Maxs    []float64
 	dPoints []DataPoint
+}
+
+func (point *DataPoint) getValByDim(d int) interface{} {
+	return 1.
 }
 
 // ExitOnErr print the err message and then exit the program
