@@ -20,8 +20,8 @@ const (
 )
 
 type DB struct {
-	CubeMetaMap map[int]string   //  key: treeNodeidx Value: metafilepath
-	Cube        map[int]MetaCube // fixed size
+	CubeMetaMap map[int]string    //  key: treeNodeidx Value: metafilepath
+	Cube        map[int]*MetaCube // fixed size
 }
 
 type CubeCell struct {
@@ -54,14 +54,14 @@ func InitDB() (*DB, error) {
 	db := new(DB)
 
 	for _, dir := range dirs {
-		if !dir.IsDir {
+		if !dir.IsDir() {
 			continue
 		}
-		files, err := ioutil.ReadDir(dir)
+		files, err := ioutil.ReadDir(dir.Name())
 		for _, file := range files {
 			if strings.Contains(file.Name(), "meta") {
-				index = strconv.Atoi(file.Name().split(".")[0])
-				path = dbRootPath + "/" + strconv.Itoa(index) + "/" + file.Name()
+				index, _ := strconv.Atoi(strings.Split(file.Name(), ".")[0])
+				path := dbRootPath + "/" + strconv.Itoa(index) + "/" + file.Name()
 				db.CubeMetaMap[index] = path
 			}
 		}
@@ -71,45 +71,46 @@ func InitDB() (*DB, error) {
 }
 
 func (db *DB) Read() error {
-
+	return nil
 }
 
 func (db *DB) Load() error {
-
+	return nil
 }
 
-// Create function create the cube from cubeId (index of tree node) and cubeSize (size of dimension)
+// CreateMetaCube function create the cube from cubeId (index of tree node) and cubeSize (size of dimension)
 // then we need to feed the data from unorganized batch of datapoints to the cube or read data from files
-func (db *DB) CreateMetaCube(cubeId int, cubeSize int) error {
-	if err := os.MkdirAll(path.Join(dbRootPath, cubeId), 0700); err != nil {
+func (db *DB) CreateMetaCube(cubeId int, cubeSize int, dims []int, maxs []float64, mins []float64) error {
+	if err := os.MkdirAll(path.Join(dbRootPath, strconv.Itoa(cubeId)), 0700); err != nil {
 		return err
 	}
 	// TODO: Change to sync.pool?
 	// free last MetaCube used
 	// TODO: LRU => current size 1, change randomize replace to be LRU style
-	if len(db.CubeMetaMap) < LRUSize {
-		db.CubeMetaMap[cubeId] = MetaCube{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, DataArr: make([]byte, dataArraySize)}
+	if len(db.Cube) < LRUSize {
+		db.Cube[cubeId] = &MetaCube{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, DataArr: make([]byte, dataArraySize), Dims: dims, Maxs: maxs, Mins: mins}
 	} else {
 		// randomly choose an index from current CubeMataMap and then replace it.
-		toReplaceIdx = rand.Intn(len(db.CubeMetaMap))
+		toReplaceIdx := rand.Intn(len(db.CubeMetaMap))
 		// before delete the entry, write back meta info and data to disk
 
-		delete(db.CubeMetaMap, toReplaceIdx)
-		db.CubeMetaMap[cubeId] = MetaCube{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, DataArr: make([]byte, dataArraySize)}
+		delete(db.Cube, toReplaceIdx)
+		db.Cube[cubeId] = &MetaCube{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, DataArr: make([]byte, dataArraySize), Dims: dims, Maxs: maxs, Mins: mins}
 	}
 	return nil
 }
 
 func (db *DB) CubeExists(cubeId int) bool {
-	return db.CubeMetaMap[cubeId] != nil
+	_, exists := db.CubeMetaMap[cubeId]
+	return exists
 }
 
 func (db *DB) Feed(batch DataBatch) error {
 	cubeSize := calculateCubeSize(batch.Dims)
 
-	if !db.CubeExists(batch.CubeID) { // even cube file does not existed (This is a new cube file), then we
+	if !db.CubeExists(batch.CubeId) { // even cube file does not existed (This is a new cube file), then we
 		// could just feed a new cube
-		if err := db.CreateMetaCube(batch.CubeID, cubeSize); err != nil {
+		if err := db.CreateMetaCube(batch.CubeId, cubeSize, batch.Dims, batch.Maxs, batch.Mins); err != nil {
 			fmt.Println("Fail to create cube")
 			return err
 		}
@@ -125,12 +126,13 @@ func (db *DB) Feed(batch DataBatch) error {
 		}
 
 	}
+	return nil
 
 }
 
 //TODO: Can be optimized
 func (db *DB) feedBatchToCube(dPoints []DataPoint, cubeIdx int) {
-	cube := &db.Cube[cubeIdx]
+	cube := db.Cube[cubeIdx]
 	for _, p := range dPoints {
 		// TODO: missing index function for each datpoint's index
 		// => commented by Jade: it doesn't matter since this is mapped to a 1-dim array
@@ -140,6 +142,7 @@ func (db *DB) feedBatchToCube(dPoints []DataPoint, cubeIdx int) {
 
 func (c *MetaCube) writeToDisk() error {
 
+	return nil
 }
 
 // feedCubeCell feed the Datapoint data to db's current cubeCell and then
@@ -171,8 +174,8 @@ func (cube *MetaCube) feedCubeCell(p DataPoint) {
 	cube.GlobalOffset += lenByteArr
 
 	// update previous pointer to point this node
-	binary.LittleEndian.PutUint32(offset, globalOffsetCopy)
-	cube.WriteEntry(offset, globalOffsetCopy, 4)
+	binary.LittleEndian.PutUint32(offset, uint32(globalOffsetCopy))
+	cube.writeEntry(offset, globalOffsetCopy, 4)
 
 }
 
@@ -188,6 +191,8 @@ func (c *MetaCube) readEntry(offset int, length int) (data []byte) {
 	for i := 0; i < length; i++ {
 		data[i] = c.DataArr[offset+i]
 	}
+	// ----------------> Need more modification
+	return data
 }
 
 // Header format: | totalLength | FloatNum | IntNum | StringNum |
@@ -195,32 +200,35 @@ func convertDPoint(d DataPoint) (res []byte, header []byte) {
 	lenFloat := len(d.FArr)
 	if lenFloat > 0 {
 		for _, fl := range d.FArr {
-			append(res, json.Marshal(fl))
+			byteData, _ := json.Marshal(fl)
+			res = append(res, byteData...)
 		}
 	}
 	lenInt := len(d.IArr)
 	if lenInt > 0 {
 		for _, iNum := range d.IArr {
-			append(res, json.Marshal(iNum))
+			byteData, _ := json.Marshal(iNum)
+			res = append(res, byteData...)
 		}
 	}
 	lenString := len(d.SArr)
 	if lenString > 0 {
 		for _, str := range d.SArr {
-			append(res, json.Marshal(str+"\t"))
+			byteData, _ := json.Marshal(str + "\t")
+			res = append(res, byteData...)
 		}
 	}
 	totalLength := len(res)
 	// TODO: (Yeech) spare the space later, maybe change uint32 to uint16
 	bs := make([]byte, 4)
-	binary.LittleEndian.PutUint32(bs, totalLength)
-	append(header, bs)
-	binary.LittleEndian.PutUint32(bs, lenFloat)
-	append(header, bs)
-	binary.LittleEndian.PutUint32(bs, lenInt)
-	append(header, bs)
-	binary.LittleEndian.PutUint32(bs, lenString)
-	append(header, bs)
+	binary.LittleEndian.PutUint32(bs, uint32(totalLength))
+	header = append(header, bs...)
+	binary.LittleEndian.PutUint32(bs, uint32(lenFloat))
+	header = append(header, bs...)
+	binary.LittleEndian.PutUint32(bs, uint32(lenInt))
+	header = append(header, bs...)
+	binary.LittleEndian.PutUint32(bs, uint32(lenString))
+	header = append(header, bs...)
 	return res, header
 }
 
