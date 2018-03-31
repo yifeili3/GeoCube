@@ -14,9 +14,10 @@ import (
 )
 
 const (
-	dbRootPath    = "./db/"
-	dataArraySize = 10000000 // Jade: should this dataArraySize to be initialized as this much?
-	LRUSize       = 1
+	dbRootPath     = "./db/"
+	dataArraySize  = 10000000 // Jade: should this dataArraySize to be initialized as this much?
+	LRUSize        = 1
+	batchReadThres = 20
 )
 
 type DB struct {
@@ -150,7 +151,18 @@ func (db *DB) ReadSingle(cubeIndex int, metaIndex int) (dPoints []DataPoint) {
 
 func (db *DB) ReadBatch(cubeIndex int, metaIndexes []int) (dPoints []DataPoint) {
 	// TODO: if the length of metaIndexes exceed some threshold, we should just sequentially go through dataArr
-
+	dPoints = make([]DataPoint, 0)
+	if len(metaIndexes) < batchReadThres {
+		for _, metaIndex := range metaIndexes {
+			dPoints = append(dPoints, db.ReadSingle(cubeIndex, metaIndex)...)
+		}
+	} else {
+		// TODO!
+		for _, metaIndex := range metaIndexes {
+			dPoints = append(dPoints, db.ReadSingle(cubeIndex, metaIndex)...)
+		}
+	}
+	return dPoints
 }
 
 func (db *DB) Read() error {
