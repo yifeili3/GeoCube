@@ -31,7 +31,7 @@ type CubeCell struct {
 
 type MetaCube struct{
    Cubesize     int
-   CubeArr      []CubeCell
+   CellArr      []CubeCell
    GlobalOffset int //global offset in DataArr
    DataArr      []byte
 }
@@ -64,50 +64,58 @@ func (db *DB) Load() error {
 
 }
 
-func (db *DB) Create(cubeId int, cubeSize int) error {
+// Create function create the cube from cubeId (index of tree node) and cubeSize (size of dimension)
+// then we need to feed the data from unorganized batch of datapoints to the cube or read data from files
+func (db *DB) CreateMetaCube(cubeId int, cubeSize int) error {
     if err: os.MkdirAll(path.Join(dbRootPath, cubeId), 0700); err != nil{
         return err
     }
-
     //TODO: Change to sync.pool?
-    db.Cube := MetaCube{CubeSize: cubeSize, CubeArr: make([]CubeCell, cubeSize), GlobalOffset: 0, DataArr: make([]byte, dataArraySize)}
-
+    // free last MetaCube
+    if db.Cube != nil {
+        db.Cube = nil
+    }
+    db.Cube := MetaCube{CubeSize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, DataArr: make([]byte, dataArraySize)}
     return nil
 }
+
 
 func (db *DB) CubeExists(cubeId int) bool {
     return db.CubeMetaMap[cubeId] != nil
 }
 
-func (db *DB) Write(batch DataBatch) error{
+func (db *DB) Feed(batch DataBatch) error{
     cubeSize := calculateCubeSize(batch.Dims)
     
-    if !db.CubeExists(batch.CubeID) {  // cube not existed TO MOD
-        if err := db.Create(batch.CubeID, cubeSize); err != nil {
+    if !db.CubeExists(batch.CubeID) {  // cube not existed (This is a new cube file), then we
+        // could just feed a new cube
+        if err := db.CreateMetaCube(batch.CubeID, cubeSize); err != nil {
             fmt.Println("Fail to create cube")
             return err
         }
-        db.writeBatch(batch.dPoint)
+        db.feedBatchToCube(batch.dPoint)
+    } else { // load Cube fisrt
 
-    } else {
-        
     }
+    
 
 
 }
 
 //TODO: Can be optimized
-func (db *DB) writeBatch(dPoint []DataPoint){
-    for _, p := range dPoint {
-        //TODO: missing index function for each datpoint's index
-        db.writeCubeCell(p)
+func (db *DB) feedBatchToCube(dPoints []DataPoint){
+    
+    for _, p := range dPoints {
+        // TODO: missing index function for each datpoint's index 
+        // => commented by Jade: it doesn't matter since this is mapped to a 1-dim array
+        db.feedCubeCell(p)
     } 
 }
 
-
-func (db *DB) writeCubeCell(p DataPoint){
+// feedCubeCell feed the Datapoint data to db's current cubeCell and then 
+func (db *DB) feedCubeCell(p DataPoint){
     //update metadata
-    c := &db.Cube.CubeArr[p.Idx]
+    c := &db.Cube.CellArr[p.Idx]
     c.Count+=1
     globalOffsetCopy := db.Cube.GlobalOffset
     if c.CellHead == 0 && globalOffsetCopy != 0 {
