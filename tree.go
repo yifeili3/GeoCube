@@ -22,9 +22,9 @@ type DTreeNode struct {
 	rInd uint
 
 	//min max for each dimension
-	mins  []float64
-	maxs  []float64
-	cells []float64
+	mins     []float64
+	maxs     []float64
+	cellVals []float64
 
 	//capacity in each node for each dim
 	//depends on the cache design, dimension can be sorted by priority
@@ -45,9 +45,9 @@ func initTreeNode(mins []float64, maxs []float64, dims []uint, dCaps []uint) *DT
 	node.dims = make([]uint, len(dims))
 	node.dCaps = make([]uint, len(dCaps))
 
-	node.cells = make([]float64, len(node.mins))
+	node.cellVals = make([]float64, len(node.mins))
 	for i, c := range node.dCaps {
-		node.cells[i] = (node.maxs[i] - node.mins[i]) / float64(c)
+		node.cellVals[i] = (node.maxs[i] - node.mins[i]) / float64(c)
 	}
 	node.isLeaf = true
 	node.lInd = 0 //0 is an invalid value for child ind
@@ -111,7 +111,7 @@ func (node *DTreeNode) MapInd(point *DataPoint) int {
 	for i, d := range node.dims {
 		v := point.getFloatValByDim(d)
 		ind *= int(node.dCaps[i])
-		ind += mapInd1d(v, node.mins[i], node.cells[i])
+		ind += mapInd1d(v, node.mins[i], node.cellVals[i])
 	}
 	point.Idx = ind
 	return ind
@@ -137,9 +137,19 @@ func (node *DTreeNode) MapIndByVal(queryDims []uint, queryDimVals []float64) (in
 			return -1, err
 		}
 		ind *= int(node.dCaps[i])
-		ind += mapInd1d(v, node.mins[i], node.cells[i])
+		ind += mapInd1d(v, node.mins[i], node.cellVals[i])
 	}
 	return ind, nil
+}
+
+// Given a central cell, return a list of its direct neighbor cell
+func (node *DTreeNode) Neighbor(metaInd int) ([]int, []uint, []float64, error) {
+	mapInd1d := func(x, xmin, cell float64) int {
+		//fmt.Println("")
+		return int(math.Floor((x - xmin) / cell))
+	}
+
+	return nil, nil, nil, nil
 }
 
 type DTree struct {
