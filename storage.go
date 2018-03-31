@@ -32,7 +32,7 @@ type CubeCell struct {
 
 // MapInd() int
 
-type MetaCube struct {
+type MetaInfo struct {
 	Cubesize     int
 	CubeIndex    int
 	Dims         []int
@@ -40,7 +40,17 @@ type MetaCube struct {
 	Maxs         []float64
 	CellArr      []CubeCell
 	GlobalOffset int //global offset in DataArr
-	DataArr      []byte
+}
+
+type MetaCube struct {
+	Metainfo MetaInfo
+	DataArr  []byte
+}
+
+func check(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Init DB initialize the metadata info from dbRootPath, construct a map of index -> metadatafilePath, where
@@ -88,14 +98,15 @@ func (db *DB) CreateMetaCube(cubeId int, cubeSize int, dims []int, maxs []float6
 	// free last MetaCube used
 	// TODO: LRU => current size 1, change randomize replace to be LRU style
 	if len(db.Cube) < LRUSize {
-		db.Cube[cubeId] = &MetaCube{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, DataArr: make([]byte, dataArraySize), Dims: dims, Maxs: maxs, Mins: mins}
+		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
 	} else {
 		// randomly choose an index from current CubeMataMap and then replace it.
 		toReplaceIdx := rand.Intn(len(db.CubeMetaMap))
 		// before delete the entry, write back meta info and data to disk
-
+		err := db.Cube[toReplaceIdx].writeToDisk()
+		check(err)
 		delete(db.Cube, toReplaceIdx)
-		db.Cube[cubeId] = &MetaCube{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, DataArr: make([]byte, dataArraySize), Dims: dims, Maxs: maxs, Mins: mins}
+		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
 	}
 	return nil
 }
@@ -122,6 +133,7 @@ func (db *DB) Feed(batch DataBatch) error {
 			db.feedBatchToCube(batch.dPoints, batch.CubeId)
 		} else {
 			// load Cube File from disk
+			// find a randomized entry in cube map and replace
 
 		}
 
@@ -141,17 +153,34 @@ func (db *DB) feedBatchToCube(dPoints []DataPoint, cubeIdx int) {
 }
 
 func (c *MetaCube) writeToDisk() error {
+	// save data array to be index.data
+	// save the left to be index.meta
+	stringIdx := strconv.Itoa(c.Metainfo.CubeIndex)
+	// create index file dir if not exists, if not, just mkdir
+	if _, err := os.Stat(dbRootPath + stringIdx + "/"); os.IsNotExist(err) {
+		os.Mkdir(dbRootPath+stringIdx+"/", os.ModePerm)
+	}
+	dataFileName := dbRootPath + stringIdx + "/" + stringIdx + ".data"
+	metaFileName := dbRootPath + stringIdx + "/" + stringIdx + ".meta"
 
-	return nil
+	// dump data file
+	err := ioutil.WriteFile(dataFileName, c.DataArr, os.ModePerm)
+	check(err)
+	// marshal Metainfo to be []byte
+	b, err := json.Marshal(c.Metainfo)
+	check(err)
+	err = ioutil.WriteFile(dataFileName, b, os.ModePerm)
+	check(err)
+	return err
 }
 
 // feedCubeCell feed the Datapoint data to db's current cubeCell and then
 func (cube *MetaCube) feedCubeCell(p DataPoint) {
 	//update metadata
 	// c is cube cell
-	c := &cube.CellArr[p.Idx]
-	c.Count += 1
-	globalOffsetCopy := cube.GlobalOffset
+	c := &cube.Metainfo.CellArr[p.Idx]
+	c.Count++
+	globalOffsetCopy := cube.Metainfo.GlobalOffset
 	if c.CellHead == 0 && globalOffsetCopy != 0 {
 		//only when no node in this cell
 		c.CellHead = globalOffsetCopy
@@ -167,11 +196,11 @@ func (cube *MetaCube) feedCubeCell(p DataPoint) {
 	lenByteArr := len(byteArr)
 
 	cube.writeEntry(offset, globalOffsetCopy, 4)
-	cube.GlobalOffset += 4
+	cube.Metainfo.GlobalOffset += 4
 	cube.writeEntry(header, globalOffsetCopy, lenHeader)
-	cube.GlobalOffset += lenHeader
+	cube.Metainfo.GlobalOffset += lenHeader
 	cube.writeEntry(byteArr, globalOffsetCopy, lenByteArr)
-	cube.GlobalOffset += lenByteArr
+	cube.Metainfo.GlobalOffset += lenByteArr
 
 	// update previous pointer to point this node
 	binary.LittleEndian.PutUint32(offset, uint32(globalOffsetCopy))
