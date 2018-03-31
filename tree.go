@@ -7,7 +7,6 @@ import (
 	"math"
 	"errors"
 	"fmt"
-	"external_libs/quickselect"
 )
 
 const defaultBufSize = 128
@@ -57,7 +56,7 @@ func initTreeNode(mins, maxs, dims, dCaps) *DTreeNode {
 func (node *DTreeNode) checkRange(point *DataPoint) error {
 	err := nil
 	for i, d := range node.dims {
-		v := point.getByDim(d)
+		v := point.getValByDim(d)
 		if v < node.mins[i] {
 			err := errors.New(fmt.Sprintf("Data has value %d on dim %d, exceeds minimum", v, d))
 			fmt.Println(err)
@@ -77,10 +76,11 @@ func (node *DTreeNode) MapInd(point *DataPoint) uint {
 
 	ind := 0
 	for i, d := range node.dims {
-		v := point.getByDim(d)
+		v := point.getValByDim(d)
 		ind *= node.dCaps[i]
 		ind += mapInd1d(v, node.mins[i], node.cells[i])
 	}
+	point.Idx = ind
 	return ind
 }
 
@@ -97,7 +97,9 @@ type DTree struct {
 }
 
 // Initialize the DTree structure, must be called after declaration
-func initTree(pDims []uint, pCaps []uint, splitThresRatio float64, initMins, initMaxs []float64) *DTree {
+func initTree(pDims []uint, pCaps []uint,
+		splitThresRatio float64, initMins []float64, 
+		initMaxs []float64) *DTree {
 	dTree := new(DTree)
 	dTree.dims = make([]uint, len(pDims))
 	dTree.dims[:] = pDims[:]
@@ -127,7 +129,7 @@ func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
 
 	//find leaf node
 	for dTree.nodes[currNodeInd].isLeaf == false {
-		v := point.getByDim(dTree.nodes[currNodeInd].splitDim)
+		v := point.getValByDim(dTree.nodes[currNodeInd].splitDim)
 		if v < dTree.nodes[currNodeInd].splitVal {
 			currNodeInd = dTree.nodes[currNodeInd].lInd
 		} else {
@@ -137,6 +139,7 @@ func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
 
 	dTree.nodeData[currNodeInd] = append(dTree.nodeData[currNodeInd], *point)
 	dTree.nodes[currNodeInd].currNum += 1
+	dTree.nodes[currNodeInd].MapInd(&dTree.nodeData[currNodeInd])
 
 	if dTree.nodes[currNodeInd].currNum >= splitThres{
 		err := dTree.splitLeaf(currNodeInd)
@@ -164,10 +167,10 @@ func (dTree *DTree) splitLeaf(splitNodeInd uint) error{
 	for j,d := range dTree.dims{
 		extractedData := make([]float64, len(dTree.nodeData[splitNodeInd]))
 		for i,p := range dTree.nodeData[splitNodeInd]{
-			extractedData[i] = p.getByDim(d)
+			extractedData[i] = p.getValByDim(d)
 		}
 		targetPosition := uint(math.Floor(len(extractedData)/2.))
-		quickselect.QuickSelect(quickselect.Float64Slice(extractedData),targetPosition)
+		QuickSelect(quickselect.Float64Slice(extractedData),targetPosition)
 		dimCandidateValue[j] = extractedData[targetPosition]
 
 		dimCandidateMetric[j] = math.Abs(dimCandidateValue[j] 
@@ -214,4 +217,19 @@ func (dTree *DTreeNode) updateTree(points []DataPoint) error {
 			return err
 		}
 	}
+}
+
+// Find the correct tree node, used in KNN query and where == query
+// Retrun the index of node
+func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) uint, error{
+	//remove dimensions not used in tree spliting
+	var qDims []uint
+	for i,qD := range queryDims{
+		usedInSplit := false
+		for _, d := range dTree.dims{
+
+		}
+	}
+	
+	
 }

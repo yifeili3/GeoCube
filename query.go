@@ -12,6 +12,25 @@ import(
 	"time"
 )
 
+
+type Query struct {
+    QueryType int
+    
+    // QueryDims can be duplicated, so that both > < can be 
+    // supported at the same time 
+	QueryDims  []uint
+    QueryDimVals []float64
+    // Query Operations in each dim: 0 =; 1 >; -1 <, etc
+    QueryDimOpts []int
+
+	// Value K is QueryType = 1, KNN
+    K int
+
+    // Later Usage
+    Client string
+}
+
+
 /******* Supported Query operations ********/  
 
 /* "all"	Return all document IDs (slow!)
@@ -24,8 +43,6 @@ Range Query: {"from": #, "to": #, "in": [#], "limit": #}	Hash lookup over a rang
 {"and": [sub-query1, sub-query2..]}	Evaluate intersection of sub-query results.
 {"not": [sub-query1, sub-query2..]}	Evaluate complement of sub-query results.
 */
-
-
 
 // Query operation selecting
 func evalQuery(query interface{}, result *map[int]struct{})(err error){
@@ -45,7 +62,6 @@ func evalQuery(query interface{}, result *map[int]struct{})(err error){
     }
 
 }
-
 
 func EvalQuery(query interface{}, result *map[int]struct{}) (err error){
     return evalQuery(query, result)
