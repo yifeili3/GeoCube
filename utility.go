@@ -50,7 +50,7 @@ func TCPListenerIdle(listener net.Listener) {
 // HandleTCPConnection read the data from connection and returns as []byte
 func HandleTCPConnection(conn net.Conn) ([]byte, error) {
 	defer conn.Close()
-	return ioutil.ReadAll(conn), nil
+	return ioutil.ReadAll(conn)
 }
 
 // SendTCPdata send byte array data to srcAddr and return if there's any error
@@ -80,8 +80,11 @@ type DataInterface interface {
 
 func (d *dataSequence) MarshalSequenceData() ([]byte, error) {
 	var buf []byte
-	make(buf, 0, 0)
-	for kvP := range d {
+	/*
+		make(buf, 0, 0)
+		for kvP := range d {
 
-	}
+		}
+	*/
+	return buf, nil
 }
