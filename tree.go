@@ -18,8 +18,8 @@ type DTreeNode struct {
 	isLeaf bool
 	//parent,left,right node index
 	//pInd uint
-	lInd int
-	rInd int
+	lInd uint
+	rInd uint
 
 	//min max for each dimension
 	mins  []float64
@@ -50,8 +50,8 @@ func initTreeNode(mins []float64, maxs []float64, dims []uint, dCaps []uint) *DT
 		node.cells[i] = (node.maxs[i] - node.mins[i]) / float64(c)
 	}
 	node.isLeaf = true
-	node.lInd = -1
-	node.rInd = -1
+	node.lInd = 0 //0 is an invalid value for child ind
+	node.rInd = 0
 	return node
 }
 
@@ -66,11 +66,11 @@ func (node *DTreeNode) checkRangeByVal(queryDims []uint, queryDimVals []float64)
 				continue
 			}
 			if v < node.mins[j] {
-				err := errors.New(fmt.Sprintf("Data has value %d on dim %d, exceeds minimum", v, d))
+				err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum", v, d))
 				fmt.Println(err)
 				return err
 			} else if v > node.maxs[j] {
-				err := errors.New(fmt.Sprintf("Data has value %d on dim %d, exceeds minimum", v, d))
+				err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum", v, d))
 				fmt.Println(err)
 				return err
 			}
@@ -87,13 +87,13 @@ func (node *DTreeNode) checkRangeByVal(queryDims []uint, queryDimVals []float64)
 
 func (node *DTreeNode) checkRange(point *DataPoint) error {
 	for i, d := range node.dims {
-		v := point.getValByDim(d)
+		v := point.getFloatValByDim(d)
 		if v < node.mins[i] {
-			err := errors.New(fmt.Sprintf("Data has value %d on dim %d, exceeds minimum", v, d))
+			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum", v, d))
 			fmt.Println(err)
 			return err
 		} else if v > node.maxs[i] {
-			err := errors.New(fmt.Sprintf("Data has value %d on dim %d, exceeds minimum", v, d))
+			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum", v, d))
 			fmt.Println(err)
 			return err
 		}
@@ -109,12 +109,37 @@ func (node *DTreeNode) MapInd(point *DataPoint) int {
 
 	ind := 0
 	for i, d := range node.dims {
-		v := point.getValByDim(d)
+		v := point.getFloatValByDim(d)
 		ind *= int(node.dCaps[i])
 		ind += mapInd1d(v, node.mins[i], node.cells[i])
 	}
 	point.Idx = ind
 	return ind
+}
+
+func (node *DTreeNode) MapIndByVal(queryDims []uint, queryDimVals []float64) (int, error) {
+	mapInd1d := func(x, xmin, cell float64) int {
+		//fmt.Println("")
+		return int(math.Floor((x - xmin) / cell))
+	}
+
+	var qDict map[uint]float64
+	for i, d := range queryDims {
+		qDict[d] = queryDimVals[i]
+	}
+
+	ind := 0
+	for i, d := range node.dims {
+		v, exists := qDict[d]
+		if !exists {
+			err := errors.New(fmt.Sprintf("Dimension %d not exist in data", d))
+			fmt.Println(err)
+			return -1, err
+		}
+		ind *= int(node.dCaps[i])
+		ind += mapInd1d(v, node.mins[i], node.cells[i])
+	}
+	return ind, nil
 }
 
 type DTree struct {
@@ -152,7 +177,7 @@ func InitTree(pDims []uint, pCaps []uint,
 }
 
 // Assign single data point to the correct node
-func (dTree *DTree) assignData(point *DataPoint, startNodeInd int) error {
+func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
 	currNodeInd := startNodeInd
 	if startNodeInd == 0 {
 		if err := dTree.nodes[currNodeInd].checkRange(point); err != nil {
@@ -162,7 +187,7 @@ func (dTree *DTree) assignData(point *DataPoint, startNodeInd int) error {
 
 	//find leaf node
 	for dTree.nodes[currNodeInd].isLeaf == false {
-		v := point.getValByDim(dTree.nodes[currNodeInd].splitDim)
+		v := point.getFloatValByDim(dTree.nodes[currNodeInd].splitDim)
 		if v < dTree.nodes[currNodeInd].splitVal {
 			currNodeInd = dTree.nodes[currNodeInd].lInd
 		} else {
@@ -184,7 +209,7 @@ func (dTree *DTree) assignData(point *DataPoint, startNodeInd int) error {
 }
 
 // Split the specific node in Tree and update the Tree accordingly
-func (dTree *DTree) splitLeaf(splitNodeInd int) error {
+func (dTree *DTree) splitLeaf(splitNodeInd uint) error {
 
 	if dTree.nodes[splitNodeInd].currNum < uint(len(dTree.nodeData[splitNodeInd])) {
 		//To do: acquire data from worker, currently WRONG if data are not stored
@@ -201,7 +226,7 @@ func (dTree *DTree) splitLeaf(splitNodeInd int) error {
 	for j, d := range dTree.dims {
 		extractedData := make([]float64, len(dTree.nodeData[splitNodeInd]))
 		for i, p := range dTree.nodeData[splitNodeInd] {
-			extractedData[i] = p.getValByDim(d)
+			extractedData[i] = p.getFloatValByDim(d)
 		}
 		targetPosition := len(extractedData) / 2
 		QuickSelect(Float64Slice(extractedData), targetPosition)
@@ -227,12 +252,12 @@ func (dTree *DTree) splitLeaf(splitNodeInd int) error {
 	leftNode := initTreeNode(dTree.nodes[splitNodeInd].mins, leftMaxs, dTree.dims, dTree.dCaps)
 	dTree.nodes = append(dTree.nodes, *leftNode)
 	dTree.nodeData = append(dTree.nodeData, nil)
-	dTree.nodes[splitNodeInd].lInd = len(dTree.nodes) - 1
+	dTree.nodes[splitNodeInd].lInd = uint(len(dTree.nodes) - 1)
 
 	rightNode := initTreeNode(rightMins, dTree.nodes[splitNodeInd].maxs, dTree.dims, dTree.dCaps)
 	dTree.nodes = append(dTree.nodes, *rightNode)
 	dTree.nodeData = append(dTree.nodeData, nil)
-	dTree.nodes[splitNodeInd].rInd = len(dTree.nodes) - 1
+	dTree.nodes[splitNodeInd].rInd = uint(len(dTree.nodes) - 1)
 
 	// This line needs to act before assigning data
 	dTree.nodes[splitNodeInd].isLeaf = false
@@ -246,7 +271,7 @@ func (dTree *DTree) splitLeaf(splitNodeInd int) error {
 
 // Batch update the tree assuming the tree has been loaded in the memory
 func (dTree *DTree) UpdateTree(points []DataPoint) error {
-	for i, p := range points {
+	for _, p := range points {
 		if err := dTree.assignData(&p, 0); err != nil {
 			return err
 		}
@@ -262,13 +287,12 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 	var qDimVals []float64
 
 	var dict map[uint]bool
-	for i, d := range dTree.dims {
+	for _, d := range dTree.dims {
 		dict[d] = true
 	}
 
 	for i, qD := range queryDims {
-		usedInSplit := false
-		if elem, exists := dict[qD]; exists {
+		if _, exists := dict[qD]; exists {
 			qDims = append(qDims, qD)
 			qDimVals = append(qDimVals, queryDimVals[i])
 		}
@@ -285,7 +309,7 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 	}
 
 	var finalNodeList []int
-	currNodeInd := 0
+	currNodeInd := uint(0)
 	// TODO: To make it able to go to two branches: currList, nextList, finalList
 	// find the correct leaf node
 	for dTree.nodes[currNodeInd].isLeaf == false {
@@ -298,6 +322,6 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 	}
 
 	// TODO: Remove this line later
-	finalNodeList = append(finalNodeList, currNodeInd)
+	finalNodeList = append(finalNodeList, int(currNodeInd))
 	return finalNodeList, nil
 }

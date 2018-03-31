@@ -25,8 +25,19 @@ type DataBatch struct {
 	dPoints []DataPoint
 }
 
-func (point *DataPoint) getValByDim(d int) interface{} {
-	return 1.
+func (point *DataPoint) getFloatValByDim(d uint) float64 {
+	return point.FArr[d]
+}
+
+func (point *DataPoint) getIntValByDim(d uint) int {
+	d = d - uint(len(point.FArr))
+	return point.IArr[d]
+}
+
+func (point *DataPoint) getStringValByDim(d uint) string {
+	d = d - uint(len(point.FArr))
+	d = d - uint(len(point.IArr))
+	return point.SArr[d]
 }
 
 // ExitOnErr print the err message and then exit the program
