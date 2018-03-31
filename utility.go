@@ -7,19 +7,20 @@ import (
 	"strconv"
 )
 
-type DataPoint struct{
-	Idx		int
-	FArr	[]float64	
-	IArr	[]int
-	SArr	[]string
+type DataPoint struct {
+	Idx  int
+	FArr []float64
+	IArr []int
+	SArr []string
 }
 
-type DataBatch struct{
-	CubeId	int
-	Dims []int
-	dPoint	[]DataPoint
+type DataBatch struct {
+	CubeId  int
+	Dims    []int
+	Mins    []float64
+	Maxs    []float64
+	dPoints []DataPoint
 }
-
 
 // ExitOnErr print the err message and then exit the program
 func ExitOnErr(err error) {
