@@ -17,6 +17,21 @@ type Query struct {
 	Client string
 }
 
+func InitQuery(qType int, qDims []uint, qDimVals []float64, qDimOpts []int, k int, client string) *Query {
+	q := new(Query)
+	q.QueryType = qType
+	q.QueryDims = make([]uint, len(qDims))
+	copy(q.QueryDims, qDims)
+	q.QueryDimVals = make([]float64, len(qDimVals))
+	copy(q.QueryDimVals, qDimVals)
+	q.QueryDimOpts = make([]int, len(qDimOpts))
+	copy(q.QueryDimOpts, qDimOpts)
+
+	q.K = k
+	q.Client = client
+	return q
+}
+
 /******* Supported Query operations ********/
 
 /* "all"	Return all document IDs (slow!)
