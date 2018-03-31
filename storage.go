@@ -15,7 +15,7 @@ import (
 
 const (
 	dbRootPath     = "./db/"
-	dataArraySize  = 10000000 // Jade: should this dataArraySize to be initialized as this much?
+	dataArraySize  = 0 // Jade: should this dataArraySize to be initialized as this much?
 	LRUSize        = 1
 	batchReadThres = 20
 )
@@ -88,79 +88,140 @@ func (db *DB) shuffleCube(cubeIndex int) {
 		return
 	} else {
 		if len(db.Cube) < LRUSize {
-			db.Cube[cubeIndex], _ = loadCubeFromDisk(cubeIndex)
+			db.Cube[cubeIndex], _ = loadMetaFromDisk(cubeIndex)
 		} else {
 			// find a randomized map entity, shuffle it with cubeIndex
 			indexToReplace := rand.Intn(len(db.Cube))
 			err := db.Cube[indexToReplace].writeToDisk()
 			check(err)
 			delete(db.Cube, indexToReplace)
-			db.Cube[cubeIndex], _ = loadCubeFromDisk(cubeIndex)
+			db.Cube[cubeIndex], _ = loadMetaFromDisk(cubeIndex)
 		}
 	}
 	return
 
 }
 
-// ReadSing ...
+func getDataHeader(header []byte) (nextHead uint32, totalLength uint32, floatNum uint32, intNum uint32, stringNum uint32) {
+	if len(header) != 20 {
+		panic("Data's header size is wrong!")
+	}
+	nextHead = binary.BigEndian.Uint32(header[0:4])
+	totalLength = binary.BigEndian.Uint32(header[4:8])
+	floatNum = binary.BigEndian.Uint32(header[8:12])
+	intNum = binary.BigEndian.Uint32(header[12:16])
+	stringNum = binary.BigEndian.Uint32(header[16:20])
+	return
+}
+
+func convertByteTodPoint(data []byte, floatNum uint32, intNum uint32, stringNum uint32) DataPoint {
+	d := new(DataPoint)
+	dataHead := uint32(0)
+
+	d.FArr = make([]float64, floatNum)
+	for i := uint32(0); i < floatNum; i++ {
+		json.Unmarshal(data[dataHead:dataHead+8], &d.FArr[i])
+		dataHead += 8
+	}
+
+	d.IArr = make([]int, intNum)
+	for i := uint32(0); i < intNum; i++ {
+		json.Unmarshal(data[dataHead:dataHead+4], &d.IArr[i])
+		dataHead += 4
+	}
+
+	d.SArr = make([]string, stringNum)
+	if stringNum > 0 {
+		var str string
+		json.Unmarshal(data[dataHead:], &str)
+		d.SArr = strings.Split(str, "\t")
+	}
+
+	return *d
+}
+
+// ReadSingle is a function that read single point from .data file
+// Depending whether the dataArr is in memory or not
 func (db *DB) ReadSingle(cubeIndex int, metaIndex int) []DataPoint {
 	// check if the cubeIndex is in cubemap, if not, load datacube to map
 	db.shuffleCube(cubeIndex)
 	// | offset(4bit) | header(| totalLength | FloatNum | IntNum | StringNum |) | data(float|int|string) |
 	cubeCell := db.Cube[cubeIndex].Metainfo.CellArr[metaIndex]
-	dataArr := db.Cube[cubeIndex].DataArr
 	dataNum := cubeCell.Count
 	dPoints := make([]DataPoint, dataNum)
 	count := 0
 	curHead := cubeCell.CellHead
-	for count < dataNum {
-		// TODO: change this to be unified constant in offset computing
-		nextHead := binary.BigEndian.Uint32(dataArr[curHead : curHead+4])
-		totalLength := binary.BigEndian.Uint32(dataArr[curHead+4 : curHead+8])
-		floatNum := binary.BigEndian.Uint32(dataArr[curHead+8 : curHead+12])
-		intNum := binary.BigEndian.Uint32(dataArr[curHead+12 : curHead+16])
-		stringNum := binary.BigEndian.Uint32(dataArr[curHead+16 : curHead+20])
-		// potential bugs...
-		data := dataArr[uint32(curHead)+20 : uint32(curHead)+20+totalLength]
-		dataHead := uint32(0)
-
-		dPoints[count].FArr = make([]float64, floatNum)
-		for i := uint32(0); i < floatNum; i++ {
-			json.Unmarshal(data[dataHead:dataHead+8], &dPoints[count].FArr[i])
-			dataHead += 8
+	dataArr := db.Cube[cubeIndex].DataArr
+	if len(dataArr) == 0 {
+		// read File as pointer
+		dataFileName := dbRootPath + strconv.Itoa(cubeIndex) + "/" + strconv.Itoa(cubeIndex) + ".data"
+		f, err := os.Open(dataFileName)
+		check(err)
+		headerData := make([]byte, 20)
+		for count < dataNum {
+			f.ReadAt(headerData, int64(curHead))
+			nextHead, totalLength, floatNum, intNum, stringNum := getDataHeader(headerData)
+			dArr := make([]byte, totalLength)
+			f.ReadAt(dArr, int64(curHead+20))
+			dPoints[count] = convertByteTodPoint(dArr, floatNum, intNum, stringNum)
+			curHead = nextHead
+			count++
 		}
+	} else {
+		// just load data from dArr
+		for count < dataNum {
+			nextHead, totalLength, floatNum, intNum, stringNum := getDataHeader(dataArr[curHead : curHead+20])
+			data := dataArr[uint32(curHead)+20 : uint32(curHead)+20+totalLength]
+			dPoints[count] = convertByteTodPoint(data, floatNum, intNum, stringNum)
 
-		dPoints[count].IArr = make([]int, intNum)
-		for i := uint32(0); i < intNum; i++ {
-			json.Unmarshal(data[dataHead:dataHead+4], &dPoints[count].FArr[i])
-			dataHead += 4
+			curHead = nextHead
+			count++
 		}
-		if stringNum > 0 {
-			var str string
-			json.Unmarshal(data[dataHead:], &str)
-			dPoints[count].SArr = strings.Split(str, "\t")
-		}
-		count++
-		curHead = nextHead
-
 	}
-
 	return dPoints
 
 }
 
 func (db *DB) ReadBatch(cubeIndex int, metaIndexes []int) []DataPoint {
-	// TODO: if the length of metaIndexes exceed some threshold, we should just sequentially go through dataArr
 	dPoints := make([]DataPoint, 0)
-	if len(metaIndexes) < batchReadThres {
-		for _, metaIndex := range metaIndexes {
-			dPoints = append(dPoints, db.ReadSingle(cubeIndex, metaIndex)...)
+	// check if the dataArr is loaded in memory
+	if _, exists := db.Cube[cubeIndex]; exists {
+		// if the cube's meta is loaded in cache, check if dataArray is loaded
+		if len(db.Cube[cubeIndex].DataArr) == 0 {
+			db.Cube[cubeIndex].loadDataFromDisk(cubeIndex)
 		}
 	} else {
-		// TODO!
-		for _, metaIndex := range metaIndexes {
-			dPoints = append(dPoints, db.ReadSingle(cubeIndex, metaIndex)...)
+		db.shuffleCube(cubeIndex)
+		db.Cube[cubeIndex].loadDataFromDisk(cubeIndex)
+	}
+	for _, metaIndex := range metaIndexes {
+		dPoints = append(dPoints, db.ReadSingle(cubeIndex, metaIndex)...)
+	}
+	return dPoints
+}
+
+func (db *DB) ReadAll(cubeIndex int) []DataPoint {
+	dPoints := make([]DataPoint, 0)
+	// check if the dataArr is loaded in memory
+	if _, exists := db.Cube[cubeIndex]; exists {
+		// if the cube's meta is loaded in cache, check if dataArray is loaded
+		if len(db.Cube[cubeIndex].DataArr) == 0 {
+			db.Cube[cubeIndex].loadDataFromDisk(cubeIndex)
 		}
+	} else {
+		db.shuffleCube(cubeIndex)
+		db.Cube[cubeIndex].loadDataFromDisk(cubeIndex)
+	}
+	// convert all data from dataArr
+	// dataFormat: | offset(4bit) | header(| totalLength | FloatNum | IntNum | StringNum |) | data(float|int|string) |
+	startindex := uint32(0)
+	for startindex < uint32(len(db.Cube[cubeIndex].DataArr)) {
+		header := db.Cube[cubeIndex].DataArr[startindex : startindex+20]
+		startindex += 20
+		_, totalLength, floatNum, intNum, stringNum := getDataHeader(header)
+		dArr := db.Cube[cubeIndex].DataArr[startindex : startindex+totalLength]
+		dPoints = append(dPoints, convertByteTodPoint(dArr, floatNum, intNum, stringNum))
+		startindex += totalLength
 	}
 	return dPoints
 }
@@ -218,6 +279,10 @@ func (db *DB) Feed(batch DataBatch) error {
 		// check if this cube is in cubeMap of db
 		if _, exists := db.Cube[batch.CubeId]; exists {
 			// this cube data is currently in momery, do append data to cube
+			if len(db.Cube[batch.CubeId].DataArr) == 0 {
+				// if there's no data arr, only metaData exists, load data from disk first
+				db.Cube[batch.CubeId].loadDataFromDisk(batch.CubeId)
+			}
 			db.feedBatchToCube(batch.dPoints, batch.CubeId)
 		} else {
 			// load Cube File from disk
@@ -226,6 +291,7 @@ func (db *DB) Feed(batch DataBatch) error {
 				db.Cube[batch.CubeId], _ = loadCubeFromDisk(batch.CubeId)
 			} else {
 				db.shuffleCube(batch.CubeId)
+				db.Cube[batch.CubeId].loadDataFromDisk(batch.CubeId)
 				// find a randomized entry in cube map, load a new MetaCube of this batch index, replace it and then add batch data to it
 				/*
 					indexToReplace := rand.Intn(len(db.Cube))
@@ -237,12 +303,9 @@ func (db *DB) Feed(batch DataBatch) error {
 			}
 			// append new data, feed to this cube
 			db.feedBatchToCube(batch.dPoints, batch.CubeId)
-
 		}
-
 	}
 	return err
-
 }
 
 //TODO: Can be optimized
@@ -253,6 +316,28 @@ func (db *DB) feedBatchToCube(dPoints []DataPoint, cubeIdx int) {
 		// => commented by Jade: it doesn't matter since this is mapped to a 1-dim array
 		cube.feedCubeCell(p)
 	}
+}
+
+// loadDataFromDisk load dataArr from disk according to the index of cube
+func (c *MetaCube) loadDataFromDisk(index int) error {
+	indexString := strconv.Itoa(index)
+	dataPath := dbRootPath + indexString + "/" + indexString + ".data"
+	dataByte, err := ioutil.ReadFile(dataPath)
+	c.DataArr = append(c.DataArr, dataByte...)
+	return err
+}
+
+// loadMetaFromDisk load metadata from disk(disgard dataArr), returns a metaCube with metainfo but a length of dataArr
+// of zero, if further need the loading of data, should call loadDataFromDisk
+func loadMetaFromDisk(index int) (*MetaCube, error) {
+	c := new(MetaCube)
+	c.DataArr = make([]byte, 0)
+	indexString := strconv.Itoa(index)
+	metaPath := dbRootPath + indexString + "/" + indexString + ".meta"
+	dataByte, err := ioutil.ReadFile(metaPath)
+	err = json.Unmarshal(dataByte, &c.Metainfo)
+	check(err)
+	return c, err
 }
 
 func loadCubeFromDisk(index int) (c *MetaCube, err error) {
@@ -281,8 +366,10 @@ func (c *MetaCube) writeToDisk() error {
 	metaFileName := dbRootPath + stringIdx + "/" + stringIdx + ".meta"
 
 	// dump data file
-	err := ioutil.WriteFile(dataFileName, c.DataArr, os.ModePerm)
-	check(err)
+	if len(c.DataArr) > 0 {
+		err := ioutil.WriteFile(dataFileName, c.DataArr, os.ModePerm)
+		check(err)
+	}
 	// marshal Metainfo to be []byte
 	b, err := json.Marshal(c.Metainfo)
 	check(err)
@@ -298,6 +385,7 @@ func (cube *MetaCube) feedCubeCell(p DataPoint) {
 	c := &cube.Metainfo.CellArr[p.Idx]
 	c.Count++
 	globalOffsetCopy := cube.Metainfo.GlobalOffset
+	TailCopy := c.CellTail
 	if c.CellHead == 0 && globalOffsetCopy != 0 {
 		//only when no node in this cell
 		c.CellHead = globalOffsetCopy
@@ -312,24 +400,30 @@ func (cube *MetaCube) feedCubeCell(p DataPoint) {
 	lenHeader := uint32(len(header))
 	lenByteArr := uint32(len(byteArr))
 
-	cube.writeEntry(offset, globalOffsetCopy, 4)
+	cube.writeEntry(offset)
 	cube.Metainfo.GlobalOffset += 4
-	cube.writeEntry(header, globalOffsetCopy, lenHeader)
+	cube.writeEntry(header)
 	cube.Metainfo.GlobalOffset += lenHeader
-	cube.writeEntry(byteArr, globalOffsetCopy, lenByteArr)
+	cube.writeEntry(byteArr)
 	cube.Metainfo.GlobalOffset += lenByteArr
 
 	// update previous pointer to point this node
 	binary.BigEndian.PutUint32(offset, uint32(globalOffsetCopy))
-	cube.writeEntry(offset, globalOffsetCopy, 4)
+
+	cube.replaceEntry(offset, TailCopy, 4)
 
 }
 
-// TODO: change this format
-func (c *MetaCube) writeEntry(data []byte, offset uint32, length uint32) {
+func (c *MetaCube) replaceEntry(data []byte, start uint32, length uint32) {
 	for i := uint32(0); i < length; i++ {
-		c.DataArr[offset+i] = data[i]
+		c.DataArr[start+i] = data[i]
 	}
+}
+
+// TODO: change this format
+func (c *MetaCube) writeEntry(data []byte) {
+	c.DataArr = append(c.DataArr, data...)
+
 }
 
 // TODO: change this format
