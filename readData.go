@@ -10,7 +10,7 @@ import (
 )
 
 //Example
-func importData(path string) ([]DataPoint, error) {
+func ImportData(path string) ([]DataPoint, error) {
 	//dropoff_datetime, pickup_datetime, dropoff_longitude, dropoff_latitude, pickup_longitude, pickup_latitude, trip_distance, total_amount, tip_amount
 	a := AttributeDataPointMapping{
 		FloatArr:  []int{2, 3, 4, 5, 6, 7, 8},

@@ -48,9 +48,9 @@ func TCPListenerIdle(listener net.Listener) {
 }
 
 // HandleTCPConnection read the data from connection and returns as []byte
-func HandleTCPConnection(conn net.Conn) ([]byte, err) {
+func HandleTCPConnection(conn net.Conn) ([]byte, error) {
 	defer conn.Close()
-	return ioutil.ReadAll(conn)
+	return ioutil.ReadAll(conn), nil
 }
 
 // SendTCPdata send byte array data to srcAddr and return if there's any error

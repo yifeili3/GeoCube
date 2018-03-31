@@ -31,6 +31,7 @@ Range Query: {"from": #, "to": #, "in": [#], "limit": #}	Hash lookup over a rang
 */
 
 // Query operation selecting
+/*
 func evalQuery(query interface{}, result *map[int]struct{}) (err error) {
 	switch expr := query.(type) {
 	case []interface{}: // process sub query  [subquery 1, subquery 2]
@@ -52,3 +53,4 @@ func evalQuery(query interface{}, result *map[int]struct{}) (err error) {
 func EvalQuery(query interface{}, result *map[int]struct{}) (err error) {
 	return evalQuery(query, result)
 }
+*/
