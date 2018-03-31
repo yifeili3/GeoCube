@@ -13,11 +13,12 @@ import (
 const (
     dbRootPath = "./db/"
     dataArraySize = 10000000    // Jade: should this dataArraySize to be initialized as this much?
+    cubeFixSize = 1
 )
 
 type DB struct{
    CubeMetaMap      map[int]string //  key: treeNodeidx Value: metafilepath
-   Cube     MetaCube
+   Cube     map[int]MetaCube    // fixed size
 }
 
 type CubeCell struct {
@@ -70,8 +71,9 @@ func (db *DB) CreateMetaCube(cubeId int, cubeSize int) error {
     if err: os.MkdirAll(path.Join(dbRootPath, cubeId), 0700); err != nil{
         return err
     }
-    //TODO: Change to sync.pool?
-    // free last MetaCube
+    // TODO: Change to sync.pool?
+    // free last MetaCube used
+    // TODO: LRU
     if db.Cube != nil {
         db.Cube = nil
     }
@@ -94,7 +96,8 @@ func (db *DB) Feed(batch DataBatch) error{
             return err
         }
         db.feedBatchToCube(batch.dPoint)
-    } else { // load Cube fisrt
+    } else { // load Cube fisrt from disk
+
 
     }
     
