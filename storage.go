@@ -103,14 +103,14 @@ func (db *DB) shuffleCube(cubeIndex int) {
 }
 
 // ReadSing ...
-func (db *DB) ReadSingle(cubeIndex int, metaIndex int) (dPoints []DataPoint) {
+func (db *DB) ReadSingle(cubeIndex int, metaIndex int) []DataPoint {
 	// check if the cubeIndex is in cubemap, if not, load datacube to map
 	db.shuffleCube(cubeIndex)
 	// | offset(4bit) | header(| totalLength | FloatNum | IntNum | StringNum |) | data(float|int|string) |
 	cubeCell := db.Cube[cubeIndex].Metainfo.CellArr[metaIndex]
 	dataArr := db.Cube[cubeIndex].DataArr
 	dataNum := cubeCell.Count
-	dPoints = make([]DataPoint, dataNum)
+	dPoints := make([]DataPoint, dataNum)
 	count := 0
 	curHead := cubeCell.CellHead
 	for count < dataNum {
@@ -149,9 +149,9 @@ func (db *DB) ReadSingle(cubeIndex int, metaIndex int) (dPoints []DataPoint) {
 
 }
 
-func (db *DB) ReadBatch(cubeIndex int, metaIndexes []int) (dPoints []DataPoint) {
+func (db *DB) ReadBatch(cubeIndex int, metaIndexes []int) []DataPoint {
 	// TODO: if the length of metaIndexes exceed some threshold, we should just sequentially go through dataArr
-	dPoints = make([]DataPoint, 0)
+	dPoints := make([]DataPoint, 0)
 	if len(metaIndexes) < batchReadThres {
 		for _, metaIndex := range metaIndexes {
 			dPoints = append(dPoints, db.ReadSingle(cubeIndex, metaIndex)...)
