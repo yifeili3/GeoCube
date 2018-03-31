@@ -35,7 +35,7 @@ type CubeCell struct {
 type MetaInfo struct {
 	Cubesize     int
 	CubeIndex    int
-	Dims         []int
+	Dims         []uint
 	Mins         []float64
 	Maxs         []float64
 	CellArr      []CubeCell
@@ -90,7 +90,7 @@ func (db *DB) Load() error {
 
 // CreateMetaCube function create the cube from cubeId (index of tree node) and cubeSize (size of dimension)
 // then we need to feed the data from unorganized batch of datapoints to the cube or read data from files
-func (db *DB) CreateMetaCube(cubeId int, cubeSize int, dims []int, maxs []float64, mins []float64) error {
+func (db *DB) CreateMetaCube(cubeId int, cubeSize int, dims []uint, maxs []float64, mins []float64) error {
 	if err := os.MkdirAll(path.Join(dbRootPath, strconv.Itoa(cubeId)), 0700); err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func (db *DB) CreateMetaCube(cubeId int, cubeSize int, dims []int, maxs []float6
 		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
 	} else {
 		// randomly choose an index from current CubeMataMap and then replace it.
-		toReplaceIdx := rand.Intn(len(db.CubeMetaMap))
+		toReplaceIdx := rand.Intn(len(db.Cube))
 		// before delete the entry, write back meta info and data to disk
 		err := db.Cube[toReplaceIdx].writeToDisk()
 		check(err)
@@ -116,29 +116,43 @@ func (db *DB) CubeExists(cubeId int) bool {
 	return exists
 }
 
+// Feed accepts data batch from upper layer and add data to DB's cube map, according to whether the cube is in map
+// if the cube is not in map, then there's a replacement of memory from IO
 func (db *DB) Feed(batch DataBatch) error {
 	cubeSize := calculateCubeSize(batch.Dims)
-
+	var err error
 	if !db.CubeExists(batch.CubeId) { // even cube file does not existed (This is a new cube file), then we
 		// could just feed a new cube
-		if err := db.CreateMetaCube(batch.CubeId, cubeSize, batch.Dims, batch.Maxs, batch.Mins); err != nil {
+		if err = db.CreateMetaCube(batch.CubeId, cubeSize, batch.Dims, batch.Maxs, batch.Mins); err != nil {
 			fmt.Println("Fail to create cube")
 			return err
 		}
 		db.feedBatchToCube(batch.dPoints, batch.CubeId)
-	} else { // load Cube fisrt from disk
+	} else {
 		// check if this cube is in cubeMap of db
 		if _, exists := db.Cube[batch.CubeId]; exists {
 			// this cube data is currently in momery, do append data to cube
 			db.feedBatchToCube(batch.dPoints, batch.CubeId)
 		} else {
 			// load Cube File from disk
-			// find a randomized entry in cube map and replace
+			// if length is less than LRUSize, just append new
+			if len(db.Cube) < LRUSize {
+				db.Cube[batch.CubeId], _ = loadCubeFromDisk(batch.CubeId)
+			} else {
+				// find a randomized entry in cube map, load a new MetaCube of this batch index, replace it and then add batch data to it
+				indexToReplace := rand.Intn(len(db.Cube))
+				err = db.Cube[indexToReplace].writeToDisk()
+				check(err)
+				delete(db.Cube, indexToReplace)
+				db.Cube[batch.CubeId], _ = loadCubeFromDisk(batch.CubeId)
+			}
+			// append new data, feed to this cube
+			db.feedBatchToCube(batch.dPoints, batch.CubeId)
 
 		}
 
 	}
-	return nil
+	return err
 
 }
 
@@ -150,6 +164,20 @@ func (db *DB) feedBatchToCube(dPoints []DataPoint, cubeIdx int) {
 		// => commented by Jade: it doesn't matter since this is mapped to a 1-dim array
 		cube.feedCubeCell(p)
 	}
+}
+
+func loadCubeFromDisk(index int) (c *MetaCube, err error) {
+	c = new(MetaCube)
+	indexString := strconv.Itoa(index)
+	dataPath := dbRootPath + indexString + "/" + indexString + ".data"
+	dataByte, err := ioutil.ReadFile(dataPath)
+	copy(c.DataArr, dataByte)
+
+	metaPath := dbRootPath + indexString + "/" + indexString + ".meta"
+	dataByte, err = ioutil.ReadFile(metaPath)
+	err = json.Unmarshal(dataByte, &c.Metainfo)
+	check(err)
+	return c, err
 }
 
 func (c *MetaCube) writeToDisk() error {
@@ -261,7 +289,7 @@ func convertDPoint(d DataPoint) (res []byte, header []byte) {
 	return res, header
 }
 
-func calculateCubeSize(dimSize []int) int {
+func calculateCubeSize(dimSize []uint) int {
 	cubeSize := 1
 	for i := range dimSize {
 		cubeSize *= i
