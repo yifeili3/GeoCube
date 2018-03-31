@@ -111,10 +111,8 @@ func initTree(pDims []uint, pCaps []uint, splitThresRatio float64, initMins, ini
 	}
 	dTree.splitThres = uint(math.Floor(dTree.capacity * splitThresRatio))
 
-	dTree.nodes = make([]DTreeNode, 1)
-	dTree.nodeData = make([][]DataPoint, 1)
-
-	dTree.nodes[0] = initTreeNode(initMins, initMaxs, dTree.dims, dTree.dCaps)
+	dTree.nodes = append(dTree.nodes, *initTreeNode(initMins, initMaxs, dTree.dims, dTree.dCaps))
+	dTree.nodeData = append(dTree.nodeData, nil)
 	return dTree
 }
 
@@ -137,15 +135,7 @@ func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
 		}
 	}
 
-	if dTree.nodeData[currNodeInd] == nil {
-		dTree.nodeData[currNodeInd] = make([]DataPoint, 0)
-	}
-
-	if len(dTree.nodeData[currNodeInd]) == cap(dTree.nodeData[currNodeInd]){
-		dTree.nodeData[currNodeInd] = append(dTree.nodeData[currNodeInd], *point)
-	}else{
-		dTree.nodeData[len(dTree.nodeData[currNodeInd])] = *point
-	}
+	dTree.nodeData[currNodeInd] = append(dTree.nodeData[currNodeInd], *point)
 	dTree.nodes[currNodeInd].currNum += 1
 
 	if dTree.nodes[currNodeInd].currNum >= splitThres{
@@ -213,11 +203,15 @@ func (dTree *DTree) splitLeaf(splitNodeInd uint) error{
 	for _,p := range dTree.nodeData[splitNodeInd]{
 		dTree.assignData(&p, splitNodeInd)
 	}
+	dTree.nodeData[splitNodeInd] = nil
+	
 }
 
 // Batch update the tree assuming the tree has been loaded in the memory
 func (dTree *DTreeNode) updateTree(points []DataPoint) error {
 	for i,p := range points{
-		dTree.assignData(&p, 0)
+		if err := dTree.assignData(&p, 0); err != nil{
+			return err
+		}
 	}
 }
