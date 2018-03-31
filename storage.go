@@ -26,8 +26,8 @@ type DB struct {
 
 type CubeCell struct {
 	Count    int
-	CellHead int // Offset (listhead) of cubelist
-	CellTail int // listTail of cubelist
+	CellHead uint32 // Offset (listhead) of cubelist
+	CellTail uint32 // listTail of cubelist
 }
 
 // MapInd() int
@@ -39,7 +39,7 @@ type MetaInfo struct {
 	Mins         []float64
 	Maxs         []float64
 	CellArr      []CubeCell
-	GlobalOffset int //global offset in DataArr
+	GlobalOffset uint32 //global offset in DataArr
 }
 
 type MetaCube struct {
@@ -68,6 +68,7 @@ func InitDB() (*DB, error) {
 			continue
 		}
 		files, err := ioutil.ReadDir(dir.Name())
+		check(err)
 		for _, file := range files {
 			if strings.Contains(file.Name(), "meta") {
 				index, _ := strconv.Atoi(strings.Split(file.Name(), ".")[0])
@@ -77,6 +78,78 @@ func InitDB() (*DB, error) {
 		}
 	}
 	return db, err
+
+}
+
+// shuffleCube guarantees the cubeIndex Cube is in memory
+func (db *DB) shuffleCube(cubeIndex int) {
+	if _, exists := db.Cube[cubeIndex]; exists {
+		return
+	} else {
+		if len(db.Cube) < LRUSize {
+			db.Cube[cubeIndex], _ = loadCubeFromDisk(cubeIndex)
+		} else {
+			// find a randomized map entity, shuffle it with cubeIndex
+			indexToReplace := rand.Intn(len(db.Cube))
+			err := db.Cube[indexToReplace].writeToDisk()
+			check(err)
+			delete(db.Cube, indexToReplace)
+			db.Cube[cubeIndex], _ = loadCubeFromDisk(cubeIndex)
+		}
+	}
+	return
+
+}
+
+// ReadSing ...
+func (db *DB) ReadSingle(cubeIndex int, metaIndex int) (dPoints []DataPoint) {
+	// check if the cubeIndex is in cubemap, if not, load datacube to map
+	db.shuffleCube(cubeIndex)
+	// | offset(4bit) | header(| totalLength | FloatNum | IntNum | StringNum |) | data(float|int|string) |
+	cubeCell := db.Cube[cubeIndex].Metainfo.CellArr[metaIndex]
+	dataArr := db.Cube[cubeIndex].DataArr
+	dataNum := cubeCell.Count
+	dPoints = make([]DataPoint, dataNum)
+	count := 0
+	curHead := cubeCell.CellHead
+	for count < dataNum {
+		// TODO: change this to be unified constant in offset computing
+		nextHead := binary.BigEndian.Uint32(dataArr[curHead : curHead+4])
+		totalLength := binary.BigEndian.Uint32(dataArr[curHead+4 : curHead+8])
+		floatNum := binary.BigEndian.Uint32(dataArr[curHead+8 : curHead+12])
+		intNum := binary.BigEndian.Uint32(dataArr[curHead+12 : curHead+16])
+		stringNum := binary.BigEndian.Uint32(dataArr[curHead+16 : curHead+20])
+		// potential bugs...
+		data := dataArr[uint32(curHead)+20 : uint32(curHead)+20+totalLength]
+		dataHead := uint32(0)
+
+		dPoints[count].FArr = make([]float64, floatNum)
+		for i := uint32(0); i < floatNum; i++ {
+			json.Unmarshal(data[dataHead:dataHead+8], &dPoints[count].FArr[i])
+			dataHead += 8
+		}
+
+		dPoints[count].IArr = make([]int, intNum)
+		for i := uint32(0); i < intNum; i++ {
+			json.Unmarshal(data[dataHead:dataHead+4], &dPoints[count].FArr[i])
+			dataHead += 4
+		}
+		if stringNum > 0 {
+			var str string
+			json.Unmarshal(data[dataHead:], &str)
+			dPoints[count].SArr = strings.Split(str, "\t")
+		}
+		count++
+		curHead = nextHead
+
+	}
+
+	return dPoints
+
+}
+
+func (db *DB) ReadBatch(cubeIndex int, metaIndexes []int) (dPoints []DataPoint) {
+	// TODO: if the length of metaIndexes exceed some threshold, we should just sequentially go through dataArr
 
 }
 
@@ -107,6 +180,7 @@ func (db *DB) CreateMetaCube(cubeId int, cubeSize int, dims []uint, maxs []float
 		check(err)
 		delete(db.Cube, toReplaceIdx)
 		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
+
 	}
 	return nil
 }
@@ -139,12 +213,15 @@ func (db *DB) Feed(batch DataBatch) error {
 			if len(db.Cube) < LRUSize {
 				db.Cube[batch.CubeId], _ = loadCubeFromDisk(batch.CubeId)
 			} else {
+				db.shuffleCube(batch.CubeId)
 				// find a randomized entry in cube map, load a new MetaCube of this batch index, replace it and then add batch data to it
-				indexToReplace := rand.Intn(len(db.Cube))
-				err = db.Cube[indexToReplace].writeToDisk()
-				check(err)
-				delete(db.Cube, indexToReplace)
-				db.Cube[batch.CubeId], _ = loadCubeFromDisk(batch.CubeId)
+				/*
+					indexToReplace := rand.Intn(len(db.Cube))
+					err = db.Cube[indexToReplace].writeToDisk()
+					check(err)
+					delete(db.Cube, indexToReplace)
+					db.Cube[batch.CubeId], _ = loadCubeFromDisk(batch.CubeId)
+				*/
 			}
 			// append new data, feed to this cube
 			db.feedBatchToCube(batch.dPoints, batch.CubeId)
@@ -197,7 +274,7 @@ func (c *MetaCube) writeToDisk() error {
 	// marshal Metainfo to be []byte
 	b, err := json.Marshal(c.Metainfo)
 	check(err)
-	err = ioutil.WriteFile(dataFileName, b, os.ModePerm)
+	err = ioutil.WriteFile(metaFileName, b, os.ModePerm)
 	check(err)
 	return err
 }
@@ -219,9 +296,9 @@ func (cube *MetaCube) feedCubeCell(p DataPoint) {
 	//Write node into byte arrary
 	byteArr, header := convertDPoint(p)
 	offset := make([]byte, 4)
-	binary.LittleEndian.PutUint32(offset, 0)
-	lenHeader := len(header)
-	lenByteArr := len(byteArr)
+	binary.BigEndian.PutUint32(offset, 0)
+	lenHeader := uint32(len(header))
+	lenByteArr := uint32(len(byteArr))
 
 	cube.writeEntry(offset, globalOffsetCopy, 4)
 	cube.Metainfo.GlobalOffset += 4
@@ -231,14 +308,14 @@ func (cube *MetaCube) feedCubeCell(p DataPoint) {
 	cube.Metainfo.GlobalOffset += lenByteArr
 
 	// update previous pointer to point this node
-	binary.LittleEndian.PutUint32(offset, uint32(globalOffsetCopy))
+	binary.BigEndian.PutUint32(offset, uint32(globalOffsetCopy))
 	cube.writeEntry(offset, globalOffsetCopy, 4)
 
 }
 
 // TODO: change this format
-func (c *MetaCube) writeEntry(data []byte, offset int, length int) {
-	for i := 0; i < length; i++ {
+func (c *MetaCube) writeEntry(data []byte, offset uint32, length uint32) {
+	for i := uint32(0); i < length; i++ {
 		c.DataArr[offset+i] = data[i]
 	}
 }
@@ -278,13 +355,13 @@ func convertDPoint(d DataPoint) (res []byte, header []byte) {
 	totalLength := len(res)
 	// TODO: (Yeech) spare the space later, maybe change uint32 to uint16
 	bs := make([]byte, 4)
-	binary.LittleEndian.PutUint32(bs, uint32(totalLength))
+	binary.BigEndian.PutUint32(bs, uint32(totalLength))
 	header = append(header, bs...)
-	binary.LittleEndian.PutUint32(bs, uint32(lenFloat))
+	binary.BigEndian.PutUint32(bs, uint32(lenFloat))
 	header = append(header, bs...)
-	binary.LittleEndian.PutUint32(bs, uint32(lenInt))
+	binary.BigEndian.PutUint32(bs, uint32(lenInt))
 	header = append(header, bs...)
-	binary.LittleEndian.PutUint32(bs, uint32(lenString))
+	binary.BigEndian.PutUint32(bs, uint32(lenString))
 	header = append(header, bs...)
 	return res, header
 }
