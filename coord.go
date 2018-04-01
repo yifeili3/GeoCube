@@ -60,6 +60,12 @@ func Test(path string) {
 
 	worker := Worker{dTree}
 	start := time.Now()
+
+	for _, batch := range batches {
+		cubeind := batch.CubeId
+		db.ReadAll(cubeind)
+	}
+
 	for _, q := range qs {
 		_, err := worker.EqualityQuery(db, q)
 		if err != nil {
