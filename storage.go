@@ -16,7 +16,7 @@ import (
 const (
 	dbRootPath     = "./db/"
 	dataArraySize  = 0 // Jade: should this dataArraySize to be initialized as this much?
-	LRUSize        = 180
+	LRUSize        = 400
 	batchReadThres = 20
 )
 
@@ -212,6 +212,11 @@ func (db *DB) ReadBatch(cubeIndex int, metaIndexes []int) []DataPoint {
 		dPoints = append(dPoints, db.ReadSingle(cubeIndex, metaIndex)...)
 	}
 	return dPoints
+}
+
+func (db *DB) testReadAll(cubeIndex int) {
+	db.shuffleCube(cubeIndex)
+	db.Cube[cubeIndex].loadDataFromDisk(cubeIndex)
 }
 
 func (db *DB) ReadAll(cubeIndex int) []DataPoint {
