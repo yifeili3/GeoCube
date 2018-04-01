@@ -1,7 +1,7 @@
 // Copyright (c) 2018 The geocube Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-package geocube
+package main
 
 import (
 	"errors"
@@ -70,11 +70,11 @@ func (node *DTreeNode) checkRangeByVal(queryDims []uint, queryDimVals []float64)
 				continue
 			}
 			if v < node.mins[j] {
-				err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum", v, d))
+				err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum %f", v, d, node.mins[j]))
 				fmt.Println(err)
 				return err
 			} else if v > node.maxs[j] {
-				err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum", v, d))
+				err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds maximun %f", v, d, node.maxs[j]))
 				fmt.Println(err)
 				return err
 			}
@@ -93,11 +93,11 @@ func (node *DTreeNode) checkRange(point *DataPoint) error {
 	for i, d := range node.dims {
 		v := point.getFloatValByDim(d)
 		if v < node.mins[i] {
-			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum", v, d))
+			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum %f", v, d, node.mins[i]))
 			fmt.Println(err)
 			return err
 		} else if v > node.maxs[i] {
-			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum", v, d))
+			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds maximun %f", v, d, node.maxs[i]))
 			fmt.Println(err)
 			return err
 		}

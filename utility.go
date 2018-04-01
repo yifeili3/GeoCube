@@ -1,4 +1,4 @@
-package geocube
+package main
 
 import (
 	"io/ioutil"

@@ -1,10 +1,9 @@
-package geocube
+package main
 
 import "fmt"
 
-//func load
-
-func geocube(path string) {
+// Test ..
+func Test(path string) {
 	dPoints, _ := ImportData(path)
 
 	pDims := []uint{1, 0}
@@ -14,10 +13,13 @@ func geocube(path string) {
 	initMaxs := []float64{-73.925 + 0.3, 40.75 + 0.3}
 	splitThresRatio := 0.4
 
+	fmt.Println("Start Initializing Tree...")
+
 	dTree := InitTree(pDims, pCaps, splitThresRatio, initMins, initMaxs)
 	dTree.UpdateTree(dPoints)
 	batches := dTree.ToDataBatch()
 
+	fmt.Println("Start Initializing DB...")
 	db, err := InitDB()
 	if err != nil {
 		panic(err)
@@ -25,6 +27,8 @@ func geocube(path string) {
 	for _, batch := range batches {
 		db.Feed(batch)
 	}
+
+	fmt.Println("Start Executing Query...")
 
 	q1 := InitQuery(1, []uint{1, 0}, []float64{-73.925, 40.75}, []int{0, 0}, 5, "lala")
 	fmt.Println(q1)

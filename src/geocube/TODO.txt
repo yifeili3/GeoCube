@@ -1,1 +1,0 @@
-TODO (Yeech): Utility.go:OmniDataType: Change this ugly data type into interface

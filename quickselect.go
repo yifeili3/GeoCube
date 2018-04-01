@@ -6,7 +6,7 @@ Selection Algorithm which finds the smallest k elements in expected O(n) time,
 and is thus an asymptotically optimal algorithm (and is faster than sorting or
 heap implementations).
 */
-package geocube
+package main
 
 import (
 	"container/heap"

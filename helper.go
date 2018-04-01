@@ -1,4 +1,4 @@
-package geocube
+package main
 
 func argmax(values []float64) int {
 	max_v := values[0]
