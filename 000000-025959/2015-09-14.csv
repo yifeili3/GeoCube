@@ -1,0 +1,1 @@
+tpep_dropoff_datetime,tpep_pickup_datetime,dropoff_longitude,dropoff_latitude,pickup_longitude,pickup_latitude,trip_distance,total_amount,tip_amount
