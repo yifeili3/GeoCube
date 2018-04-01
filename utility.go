@@ -18,11 +18,12 @@ type DataPoint struct {
 }
 
 type DataBatch struct {
-	CubeId  int
-	Dims    []uint
-	Mins    []float64
-	Maxs    []float64
-	dPoints []DataPoint
+	CubeId   int
+	Capacity uint
+	Dims     []uint
+	Mins     []float64
+	Maxs     []float64
+	dPoints  []DataPoint
 }
 
 func (point *DataPoint) getFloatValByDim(d uint) float64 {

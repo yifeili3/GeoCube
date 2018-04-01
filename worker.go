@@ -16,6 +16,7 @@ func (worker *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, error) {
 	if err != nil {
 		return nil, err
 	}
+	//fmt.Println(cubeInds)
 
 	var metaInds []int
 	for _, cubeInd := range cubeInds {
@@ -29,9 +30,13 @@ func (worker *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, error) {
 
 	var dataPoints []DataPoint
 	for i, cubeInd := range cubeInds {
+
 		dPoints := db.ReadSingle(cubeInd, metaInds[i])
+		//fmt.Println(fmt.Sprintf("CubeInd: %d, MetaInd %d", cubeInd, metaInds[i]))
+		//fmt.Println(dPoints)
 		for _, dp := range dPoints {
 			if query.CheckPoint(&dp) {
+				//fmt.Println("found")
 				dataPoints = append(dataPoints, dp)
 			}
 		}

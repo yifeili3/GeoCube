@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
+	"math"
 	"math/rand"
 	"os"
 	"path"
@@ -16,7 +16,7 @@ import (
 const (
 	dbRootPath     = "./db/"
 	dataArraySize  = 0 // Jade: should this dataArraySize to be initialized as this much?
-	LRUSize        = 1
+	LRUSize        = 180
 	batchReadThres = 20
 )
 
@@ -57,28 +57,32 @@ func check(err error) {
 // Init DB initialize the metadata info from dbRootPath, construct a map of index -> metadatafilePath, where
 // index is the name of the file. e.g. map[1][dbRootPath/index/index.meta]
 func InitDB() (*DB, error) {
-	dirs, err := ioutil.ReadDir(dbRootPath)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	db := new(DB)
-
-	for _, dir := range dirs {
-		if !dir.IsDir() {
-			continue
+	db.CubeMetaMap = make(map[int]string)
+	db.Cube = make(map[int]*MetaCube)
+	/*
+		dirs, err := ioutil.ReadDir(dbRootPath)
+		if err != nil {
+			log.Fatal(err)
 		}
-		files, err := ioutil.ReadDir(dir.Name())
-		check(err)
-		for _, file := range files {
-			if strings.Contains(file.Name(), "meta") {
-				index, _ := strconv.Atoi(strings.Split(file.Name(), ".")[0])
-				path := dbRootPath + "/" + strconv.Itoa(index) + "/" + file.Name()
-				db.CubeMetaMap[index] = path
+		for _, dir := range dirs {
+			if !dir.IsDir() {
+				continue
+			}
+			//fmt.Println(dir.Name())
+			files, err := ioutil.ReadDir(dbRootPath + dir.Name())
+			check(err)
+			for _, file := range files {
+				if strings.Contains(file.Name(), "meta") {
+					index, _ := strconv.Atoi(strings.Split(file.Name(), ".")[0])
+					path := dbRootPath + "/" + strconv.Itoa(index) + "/" + file.Name()
+					db.CubeMetaMap[index] = path
+				}
 			}
 		}
-	}
-	return db, err
+	*/
+	return db, nil
 
 }
 
@@ -91,7 +95,13 @@ func (db *DB) shuffleCube(cubeIndex int) {
 			db.Cube[cubeIndex], _ = loadMetaFromDisk(cubeIndex)
 		} else {
 			// find a randomized map entity, shuffle it with cubeIndex
-			indexToReplace := rand.Intn(len(db.Cube))
+			randomFig := rand.Intn(len(db.Cube))
+			// get the key
+			keys := make([]int, 0)
+			for k, _ := range db.Cube {
+				keys = append(keys, k)
+			}
+			indexToReplace := keys[randomFig]
 			err := db.Cube[indexToReplace].writeToDisk()
 			check(err)
 			delete(db.Cube, indexToReplace)
@@ -120,7 +130,7 @@ func convertByteTodPoint(data []byte, floatNum uint32, intNum uint32, stringNum 
 
 	d.FArr = make([]float64, floatNum)
 	for i := uint32(0); i < floatNum; i++ {
-		json.Unmarshal(data[dataHead:dataHead+8], &d.FArr[i])
+		d.FArr[i] = Float64frombytes(data[dataHead : dataHead+8])
 		dataHead += 8
 	}
 
@@ -132,8 +142,11 @@ func convertByteTodPoint(data []byte, floatNum uint32, intNum uint32, stringNum 
 
 	d.SArr = make([]string, stringNum)
 	if stringNum > 0 {
+
 		var str string
-		json.Unmarshal(data[dataHead:], &str)
+		str = string(data[dataHead:len(data)])
+		// json.Unmarshal(data[dataHead:len(data)], &str)
+		//fmt.Printf("stringNum is %d, str is %s, len of string is %d\n", stringNum, str, len(str))
 		d.SArr = strings.Split(str, "\t")
 	}
 
@@ -234,9 +247,18 @@ func (db *DB) Load() error {
 	return nil
 }
 
+// Keys get the key set of a map
+func Keys(m map[int]interface{}) (keys []int) {
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // CreateMetaCube function create the cube from cubeId (index of tree node) and cubeSize (size of dimension)
 // then we need to feed the data from unorganized batch of datapoints to the cube or read data from files
 func (db *DB) CreateMetaCube(cubeId int, cubeSize int, dims []uint, maxs []float64, mins []float64) error {
+	//fmt.Printf("Creating metaCube for index:%d...\n", cubeId)
 	if err := os.MkdirAll(path.Join(dbRootPath, strconv.Itoa(cubeId)), 0700); err != nil {
 		return err
 	}
@@ -244,15 +266,20 @@ func (db *DB) CreateMetaCube(cubeId int, cubeSize int, dims []uint, maxs []float
 	// free last MetaCube used
 	// TODO: LRU => current size 1, change randomize replace to be LRU style
 	if len(db.Cube) < LRUSize {
-		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
+		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{CubeIndex: cubeId, Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
 	} else {
 		// randomly choose an index from current CubeMataMap and then replace it.
-		toReplaceIdx := rand.Intn(len(db.Cube))
+		randomFig := rand.Intn(len(db.Cube))
+		keys := make([]int, 0)
+		for k, _ := range db.Cube {
+			keys = append(keys, k)
+		}
+		toReplaceIdx := keys[randomFig]
 		// before delete the entry, write back meta info and data to disk
 		err := db.Cube[toReplaceIdx].writeToDisk()
 		check(err)
 		delete(db.Cube, toReplaceIdx)
-		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
+		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{CubeIndex: cubeId, Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
 
 	}
 	return nil
@@ -266,7 +293,7 @@ func (db *DB) CubeExists(cubeId int) bool {
 // Feed accepts data batch from upper layer and add data to DB's cube map, according to whether the cube is in map
 // if the cube is not in map, then there's a replacement of memory from IO
 func (db *DB) Feed(batch DataBatch) error {
-	cubeSize := calculateCubeSize(batch.Dims)
+	cubeSize := int(batch.Capacity)
 	var err error
 	if !db.CubeExists(batch.CubeId) { // even cube file does not existed (This is a new cube file), then we
 		// could just feed a new cube
@@ -305,6 +332,7 @@ func (db *DB) Feed(batch DataBatch) error {
 			db.feedBatchToCube(batch.dPoints, batch.CubeId)
 		}
 	}
+	//fmt.Printf("After feed, data length of cube %d is %d\n", batch.CubeId, len(db.Cube[batch.CubeId].DataArr))
 	return err
 }
 
@@ -322,9 +350,12 @@ func (db *DB) feedBatchToCube(dPoints []DataPoint, cubeIdx int) {
 func (c *MetaCube) loadDataFromDisk(index int) error {
 	indexString := strconv.Itoa(index)
 	dataPath := dbRootPath + indexString + "/" + indexString + ".data"
-	dataByte, err := ioutil.ReadFile(dataPath)
-	c.DataArr = append(c.DataArr, dataByte...)
-	return err
+	if _, err := os.Stat(dataPath); err == nil {
+		dataByte, _ := ioutil.ReadFile(dataPath)
+		c.DataArr = append(c.DataArr, dataByte...)
+	}
+
+	return nil
 }
 
 // loadMetaFromDisk load metadata from disk(disgard dataArr), returns a metaCube with metainfo but a length of dataArr
@@ -344,8 +375,11 @@ func loadCubeFromDisk(index int) (c *MetaCube, err error) {
 	c = new(MetaCube)
 	indexString := strconv.Itoa(index)
 	dataPath := dbRootPath + indexString + "/" + indexString + ".data"
-	dataByte, err := ioutil.ReadFile(dataPath)
-	copy(c.DataArr, dataByte)
+	var dataByte []byte
+	if _, err := os.Stat(dataPath); err == nil {
+		dataByte, _ = ioutil.ReadFile(dataPath)
+		copy(c.DataArr, dataByte)
+	}
 
 	metaPath := dbRootPath + indexString + "/" + indexString + ".meta"
 	dataByte, err = ioutil.ReadFile(metaPath)
@@ -357,6 +391,7 @@ func loadCubeFromDisk(index int) (c *MetaCube, err error) {
 func (c *MetaCube) writeToDisk() error {
 	// save data array to be index.data
 	// save the left to be index.meta
+	//fmt.Printf("Writing back cube %d to disk...\n", c.Metainfo.CubeIndex)
 	stringIdx := strconv.Itoa(c.Metainfo.CubeIndex)
 	// create index file dir if not exists, if not, just mkdir
 	if _, err := os.Stat(dbRootPath + stringIdx + "/"); os.IsNotExist(err) {
@@ -385,6 +420,7 @@ func (cube *MetaCube) feedCubeCell(p DataPoint) {
 	c := &cube.Metainfo.CellArr[p.Idx]
 	c.Count++
 	globalOffsetCopy := cube.Metainfo.GlobalOffset
+	//fmt.Printf("GlobalOffset = %d\n", cube.Metainfo.GlobalOffset)
 	TailCopy := c.CellTail
 	if c.CellHead == 0 && globalOffsetCopy != 0 {
 		//only when no node in this cell
@@ -415,8 +451,16 @@ func (cube *MetaCube) feedCubeCell(p DataPoint) {
 }
 
 func (c *MetaCube) replaceEntry(data []byte, start uint32, length uint32) {
+	//fmt.Printf("In replaceEntry: start = %d, dataArr_Len = %d\n", start, len(c.DataArr))
 	for i := uint32(0); i < length; i++ {
-		c.DataArr[start+i] = data[i]
+		if (start + i) >= uint32(len(c.DataArr)) {
+			//fmt.Println("replace byte for data is wrong...Index out of range")
+			c.DataArr = append(c.DataArr, data[i:]...)
+			return
+		} else {
+			c.DataArr[start+i] = data[i]
+		}
+
 	}
 }
 
@@ -440,7 +484,7 @@ func convertDPoint(d DataPoint) (res []byte, header []byte) {
 	lenFloat := len(d.FArr)
 	if lenFloat > 0 {
 		for _, fl := range d.FArr {
-			byteData, _ := json.Marshal(fl)
+			byteData, _ := Float64bytes(fl)
 			res = append(res, byteData...)
 		}
 	}
@@ -452,10 +496,12 @@ func convertDPoint(d DataPoint) (res []byte, header []byte) {
 		}
 	}
 	lenString := len(d.SArr)
+	//fmt.Printf("lenString: %d, content:%s\n", lenString, d.SArr)
 	if lenString > 0 {
 		for _, str := range d.SArr {
-			byteData, _ := json.Marshal(str + "\t")
+			byteData := []byte(str + "\t")
 			res = append(res, byteData...)
+			//fmt.Printf("length of res after append:%d\n", len(res))
 		}
 	}
 	totalLength := len(res)
@@ -473,9 +519,22 @@ func convertDPoint(d DataPoint) (res []byte, header []byte) {
 }
 
 func calculateCubeSize(dimSize []uint) int {
-	cubeSize := 1
-	for i := range dimSize {
+	cubeSize := uint(1)
+	for _, i := range dimSize {
 		cubeSize *= i
 	}
-	return cubeSize
+	return int(cubeSize)
+}
+
+func Float64frombytes(bytes []byte) float64 {
+	bits := binary.LittleEndian.Uint64(bytes)
+	float := math.Float64frombits(bits)
+	return float
+}
+
+func Float64bytes(float float64) ([]byte, error) {
+	bits := math.Float64bits(float)
+	bytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bytes, bits)
+	return bytes, nil
 }

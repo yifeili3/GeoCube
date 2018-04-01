@@ -42,21 +42,26 @@ type DTreeNode struct {
 	splitVal float64
 }
 
-func initTreeNode(mins []float64, maxs []float64, dims []uint, dCaps []uint) *DTreeNode {
-	node := new(DTreeNode)
+func (node *DTreeNode) initTreeNode(mins []float64, maxs []float64, dims []uint, dCaps []uint) {
 	node.mins = make([]float64, len(mins))
+	copy(node.mins, mins)
 	node.maxs = make([]float64, len(maxs))
+	copy(node.maxs, maxs)
 	node.dims = make([]uint, len(dims))
+	copy(node.dims, dims)
 	node.dCaps = make([]uint, len(dCaps))
+	copy(node.dCaps, dCaps)
 
 	node.cellVals = make([]float64, len(node.mins))
+	node.capacity = uint(1)
 	for i, c := range node.dCaps {
 		node.cellVals[i] = (node.maxs[i] - node.mins[i]) / float64(c)
+		node.capacity *= c
 	}
 	node.isLeaf = true
 	node.lInd = 0 //0 is an invalid value for child ind
 	node.rInd = 0
-	return node
+	node.currNum = 0
 }
 
 // Check the query values are in the min max range
@@ -128,6 +133,7 @@ func (node *DTreeNode) MapIndByVal(queryDims []uint, queryDimVals []float64) (in
 	}
 
 	var qDict map[uint]float64
+	qDict = make(map[uint]float64, 4)
 	for i, d := range queryDims {
 		qDict[d] = queryDimVals[i]
 	}
@@ -148,6 +154,7 @@ func (node *DTreeNode) MapIndByVal(queryDims []uint, queryDimVals []float64) (in
 
 func (node *DTreeNode) FixValueOrder(queryDims []uint, queryDimVals []float64) ([]float64, error) {
 	var qDict map[uint]float64
+	qDict = make(map[uint]float64, 4)
 	for i, d := range queryDims {
 		qDict[d] = queryDimVals[i]
 	}
@@ -214,6 +221,7 @@ type DTree struct {
 	capacity   uint
 	splitThres uint
 
+	// nodeBatchMap []uint
 	warnings []string
 }
 
@@ -232,7 +240,10 @@ func InitTree(pDims []uint, pCaps []uint, splitThresRatio float64, initMins []fl
 	}
 	dTree.splitThres = uint(math.Floor(float64(dTree.capacity) * splitThresRatio))
 
-	dTree.nodes = append(dTree.nodes, *initTreeNode(initMins, initMaxs, dTree.dims, dTree.dCaps))
+	dTree.nodes = append(dTree.nodes, DTreeNode{})
+	dTree.nodes[0].initTreeNode(initMins, initMaxs, dTree.dims, dTree.dCaps)
+	//fmt.Println(initMins)
+	//fmt.Println(dTree.nodes[0].mins)
 	dTree.nodeData = append(dTree.nodeData, nil)
 	return dTree
 }
@@ -259,8 +270,10 @@ func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
 	dTree.nodeData[currNodeInd] = append(dTree.nodeData[currNodeInd], *point)
 	dTree.nodes[currNodeInd].currNum += 1
 	dTree.nodes[currNodeInd].MapInd(&dTree.nodeData[currNodeInd][len(dTree.nodeData[currNodeInd])-1])
+	//fmt.Println(currNodeInd)
 
 	if dTree.nodes[currNodeInd].currNum >= dTree.splitThres {
+		//fmt.Println("split")
 		err := dTree.splitLeaf(currNodeInd)
 		if err != nil {
 			return err
@@ -304,21 +317,23 @@ func (dTree *DTree) splitLeaf(splitNodeInd uint) error {
 
 	leftMaxs := make([]float64, len(dTree.dims))
 	copy(leftMaxs, dTree.nodes[splitNodeInd].maxs)
-	leftMaxs[bestSplit] = dimCandidateValue[bestSplit]
+	leftMaxs[bestSplit] = dTree.nodes[splitNodeInd].splitVal
 
 	rightMins := make([]float64, len(dTree.dims))
 	copy(rightMins, dTree.nodes[splitNodeInd].mins)
-	rightMins[bestSplit] = dimCandidateValue[bestSplit]
+	rightMins[bestSplit] = dTree.nodes[splitNodeInd].splitVal
 
-	leftNode := initTreeNode(dTree.nodes[splitNodeInd].mins, leftMaxs, dTree.dims, dTree.dCaps)
-	dTree.nodes = append(dTree.nodes, *leftNode)
+	dTree.nodes = append(dTree.nodes, DTreeNode{})
+	leftInd := uint(len(dTree.nodes) - 1)
+	dTree.nodes[leftInd].initTreeNode(dTree.nodes[splitNodeInd].mins, leftMaxs, dTree.dims, dTree.dCaps)
 	dTree.nodeData = append(dTree.nodeData, nil)
-	dTree.nodes[splitNodeInd].lInd = uint(len(dTree.nodes) - 1)
+	dTree.nodes[splitNodeInd].lInd = leftInd
 
-	rightNode := initTreeNode(rightMins, dTree.nodes[splitNodeInd].maxs, dTree.dims, dTree.dCaps)
-	dTree.nodes = append(dTree.nodes, *rightNode)
+	dTree.nodes = append(dTree.nodes, DTreeNode{})
+	rightInd := leftInd + 1
+	dTree.nodes[rightInd].initTreeNode(rightMins, dTree.nodes[splitNodeInd].maxs, dTree.dims, dTree.dCaps)
 	dTree.nodeData = append(dTree.nodeData, nil)
-	dTree.nodes[splitNodeInd].rInd = uint(len(dTree.nodes) - 1)
+	dTree.nodes[splitNodeInd].rInd = rightInd
 
 	// This line needs to act before assigning data
 	dTree.nodes[splitNodeInd].isLeaf = false
@@ -335,7 +350,14 @@ func (dTree *DTree) UpdateTree(points []DataPoint) error {
 	for _, p := range points {
 		if err := dTree.assignData(&p, 0); err != nil {
 			return err
+		} else {
+			// Debug
+			//for _, n := range dTree.nodes {
+			//	fmt.Printf("####%d, %d\n", n.lInd, n.rInd)
+			//}
+			//fmt.Println(" successfully imported")
 		}
+
 	}
 	return nil
 }
@@ -344,10 +366,13 @@ func (dTree *DTree) UpdateTree(points []DataPoint) error {
 // Retrun the index of node
 func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([]int, error) {
 	//remove dimensions not used in tree spliting
+	//fmt.Println(queryDims)
+	//fmt.Println(queryDimVals)
 	var qDims []uint
 	var qDimVals []float64
 
 	var dict map[uint]bool
+	dict = make(map[uint]bool, 4)
 	for _, d := range dTree.dims {
 		dict[d] = true
 	}
@@ -358,12 +383,16 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 			qDimVals = append(qDimVals, queryDimVals[i])
 		}
 	}
+	//fmt.Println(qDims)
+	//fmt.Println(qDimVals)
 
 	// map from search dimension to value
 	var qDict map[uint]float64
+	qDict = make(map[uint]float64, 4)
 	for i, qD := range qDims {
 		qDict[qD] = qDimVals[i]
 	}
+	//fmt.Println(qDict)
 
 	if err := dTree.nodes[0].checkRangeByVal(qDims, qDimVals); err != nil {
 		return []int{0}, err
@@ -390,7 +419,9 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 func (dTree *DTree) ToDataBatch() []DataBatch {
 	var dataBatches []DataBatch
 	for i, node := range dTree.nodes {
-		dataBatches = append(dataBatches, DataBatch{i, node.dims, node.mins, node.maxs, dTree.nodeData[i]})
+		if node.isLeaf {
+			dataBatches = append(dataBatches, DataBatch{i, node.capacity, node.dims, node.mins, node.maxs, dTree.nodeData[i]})
+		}
 	}
 	return dataBatches
 }

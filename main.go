@@ -1,6 +1,6 @@
 package main
 
 func main() {
-	path := "/Users/yifeili/go/src/GeoCube/000000-025959/2015-09-01.csv"
+	path := "000000-025959/"
 	Test(path)
 }

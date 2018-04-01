@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/csv"
 	"io"
+	"log"
 	"os"
 	"strconv"
 )
@@ -12,7 +13,7 @@ import (
 func ImportData(path string) ([]DataPoint, error) {
 	//dropoff_datetime, pickup_datetime, dropoff_longitude, dropoff_latitude, pickup_longitude, pickup_latitude, trip_distance, total_amount, tip_amount
 	a := AttributeDataPointMapping{
-		FloatArr:  []int{2, 3, 4, 5, 6},
+		FloatArr:  []int{2, 3, 4, 5, 6, 7, 8},
 		StringArr: []int{0, 1},
 	}
 	return importCSV2DataPoint(path, a)
@@ -32,6 +33,10 @@ func importCSV2DataPoint(path string, attributeOrder AttributeDataPointMapping) 
 	count := 0
 	for {
 		line, err := reader.Read()
+		if err != nil {
+			log.Println(err)
+		}
+		//fmt.Println(line)
 		count++
 		if count == 1 {
 			continue
@@ -47,13 +52,13 @@ func importCSV2DataPoint(path string, attributeOrder AttributeDataPointMapping) 
 
 		var iArr []int
 		for order := range attributeOrder.IntArr {
-			temp, _ := strconv.ParseInt(line[attributeOrder.FloatArr[order]], 10, 32)
+			temp, _ := strconv.ParseInt(line[attributeOrder.IntArr[order]], 10, 32)
 			iArr = append(iArr, int(temp))
 		}
 
 		var sArr []string
 		for order := range attributeOrder.StringArr {
-			sArr = append(sArr, line[attributeOrder.FloatArr[order]])
+			sArr = append(sArr, line[attributeOrder.StringArr[order]])
 		}
 
 		dPointArr = append(dPointArr, DataPoint{
