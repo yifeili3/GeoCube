@@ -3,15 +3,23 @@
 // license that can be found in the LICENSE file.
 package geocube
 
-func (dTree *DTree) EqualityQuery(db *DB, query *Query) ([]DataPoint, error) {
-	cubeInds, err := dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
+import (
+	"fmt"
+)
+
+type Worker struct {
+	dTree *DTree
+}
+
+func (worker *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, error) {
+	cubeInds, err := worker.dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
 	if err != nil {
 		return nil, err
 	}
 
 	var metaInds []int
 	for _, cubeInd := range cubeInds {
-		metaInd, err := dTree.nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
+		metaInd, err := worker.dTree.nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
 		if err != nil {
 			return nil, err
 		} else {
@@ -39,6 +47,7 @@ func (dTree *DTree) KNNQuery(db *DB, query *Query) ([]DataPoint, error) {
 	// KNN query need to gaurantee the full spatial info(or even more) is provided
 	cubeInd := cubeInds[0]
 	metaInd, err := dTree.nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
+	fmt.Println(metaInd)
 
 	// TODO: BFS Implementation
 	var dataPoints []DataPoint

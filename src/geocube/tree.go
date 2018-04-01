@@ -9,7 +9,10 @@ import (
 	"math"
 )
 
-const defaultBufSize = 128
+// Too small may have truncation error
+// Too large may cause stepping over
+// 1e-8 is about right
+const tinyMoveRatio = 0.00000001
 
 type Cube struct {
 }
@@ -32,7 +35,8 @@ type DTreeNode struct {
 	dims  []uint
 	dCaps []uint
 
-	currNum uint
+	capacity uint
+	currNum  uint
 
 	splitDim uint
 	splitVal float64
@@ -142,14 +146,63 @@ func (node *DTreeNode) MapIndByVal(queryDims []uint, queryDimVals []float64) (in
 	return ind, nil
 }
 
-// Given a central cell, return a list of its direct neighbor cell
-func (node *DTreeNode) Neighbor(metaInd int) ([]int, []uint, []float64, error) {
-	mapInd1d := func(x, xmin, cell float64) int {
-		//fmt.Println("")
-		return int(math.Floor((x - xmin) / cell))
+func (node *DTreeNode) FixValueOrder(queryDims []uint, queryDimVals []float64) ([]float64, error) {
+	var qDict map[uint]float64
+	for i, d := range queryDims {
+		qDict[d] = queryDimVals[i]
 	}
+	val := make([]float64, len(node.dims))
+	for i, d := range node.dims {
+		v, exists := qDict[d]
+		if !exists {
+			err := errors.New(fmt.Sprintf("Dimension %d not exist in data", d))
+			fmt.Println(err)
+			return nil, err
+		}
+		val[i] = v
+	}
+	return val, nil
+}
 
-	return nil, nil, nil, nil
+// Given a node, return the corners of the node
+func (node *DTreeNode) Corners() ([][]float64, error) {
+	// The first dim of corners specify each corner
+	// The second dim specifies the dimension of each value
+	// Consistent to node.dims' order
+	corners := make([][]float64, int(math.Pow(2, float64(len(node.dims)))))
+	for i := range corners {
+		corners[i] = make([]float64, len(node.dims))
+		j := i
+		for k := range node.dims {
+			if j%2 == 0 { //min corner of that dim
+				corners[i][k] = node.mins[k]
+			} else { //max corner of that dim
+				corners[i][k] = node.maxs[k]
+			}
+			j /= 2
+		}
+	}
+	return corners, nil
+}
+
+// Given a central position, return the constrain point on the boundary line
+// datapoint is assumed to have same dim info as node
+func (node *DTreeNode) BoundaryConstrain(dataDimVals []float64) ([][]float64, error) {
+	// The first dim of outliers specify each outlier
+	// The second dim specifies the dimension of each value
+	// Consistent to node.dims' order
+	constrainPoints := make([][]float64, 2*len(node.dims))
+	for i := range constrainPoints {
+		constrainPoints[i] = make([]float64, len(node.dims))
+		copy(constrainPoints[i], dataDimVals)
+		dim := i / 2
+		if i%2 == 0 {
+			constrainPoints[i][dim] = node.mins[dim]
+		} else {
+			constrainPoints[i][dim] = node.maxs[dim]
+		}
+	}
+	return constrainPoints, nil
 }
 
 type DTree struct {
@@ -165,9 +218,7 @@ type DTree struct {
 }
 
 // Initialize the DTree structure, must be called after declaration
-func InitTree(pDims []uint, pCaps []uint,
-	splitThresRatio float64, initMins []float64,
-	initMaxs []float64) *DTree {
+func InitTree(pDims []uint, pCaps []uint, splitThresRatio float64, initMins []float64, initMaxs []float64) *DTree {
 	dTree := new(DTree)
 	dTree.dims = make([]uint, len(pDims))
 	copy(dTree.dims, pDims)
@@ -334,4 +385,12 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 	// TODO: Remove this line later
 	finalNodeList = append(finalNodeList, int(currNodeInd))
 	return finalNodeList, nil
+}
+
+func (dTree *DTree) ToDataBatch() []DataBatch {
+	var dataBatches []DataBatch
+	for i, node := range dTree.nodes {
+		dataBatches = append(dataBatches, DataBatch{i, node.dims, node.mins, node.maxs, dTree.nodeData[i]})
+	}
+	return dataBatches
 }
