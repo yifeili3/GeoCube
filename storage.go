@@ -169,6 +169,7 @@ func (db *DB) ReadSingle(cubeIndex int, metaIndex int) []DataPoint {
 		// read File as pointer
 		dataFileName := dbRootPath + strconv.Itoa(cubeIndex) + "/" + strconv.Itoa(cubeIndex) + ".data"
 		f, err := os.Open(dataFileName)
+		defer f.Close()
 		check(err)
 		headerData := make([]byte, 20)
 		for count < dataNum {
