@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 )
 
 // Too small may have truncation error
@@ -96,6 +97,11 @@ func (node *DTreeNode) checkRangeByVal(queryDims []uint, queryDimVals []float64)
 
 func (node *DTreeNode) checkRange(point *DataPoint) error {
 	for i, d := range node.dims {
+		if int(d) >= len(point.FArr) {
+			err := errors.New(fmt.Sprintf("Try to access dim %d, exceeds len %d", d, len(point.FArr)))
+			fmt.Println(err)
+			return err
+		}
 		v := point.getFloatValByDim(d)
 		if v < node.mins[i] {
 			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum %f", v, d, node.mins[i]))
@@ -347,8 +353,10 @@ func (dTree *DTree) splitLeaf(splitNodeInd uint) error {
 
 // Batch update the tree assuming the tree has been loaded in the memory
 func (dTree *DTree) UpdateTree(points []DataPoint) error {
-	for _, p := range points {
-		if err := dTree.assignData(&p, 0); err != nil {
+	perm := rand.Perm(len(points))
+	for _, pInd := range perm {
+		if err := dTree.assignData(&points[pInd], 0); err != nil {
+			fmt.Printf("Error happen in data index %d \n", pInd)
 			return err
 		} else {
 			// Debug
@@ -422,6 +430,7 @@ func (dTree *DTree) ToDataBatch() []DataBatch {
 		if node.isLeaf {
 			dataBatches = append(dataBatches, DataBatch{i, node.capacity, node.dims, node.mins, node.maxs, dTree.nodeData[i]})
 		}
+		dTree.nodeData[i] = nil
 	}
 	return dataBatches
 }

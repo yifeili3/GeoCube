@@ -3,14 +3,29 @@ package main
 import (
 	"fmt"
 	"log"
+	"runtime"
 	"time"
 )
+
+func PrintMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
+	fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+	fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+	fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+	fmt.Printf("\tNumGC = %v\n", m.NumGC)
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
+}
 
 // Test ..
 func Test(path string) {
 	//dPoints = dPoints[:20]
 	pDims := []uint{1, 0}
-	pCaps := []uint{10, 10}
+	pCaps := []uint{200, 200}
 
 	initMins := []float64{40.75 - 0.3, -73.925 - 0.3}
 	initMaxs := []float64{40.75 + 0.3, -73.925 + 0.3}
@@ -24,9 +39,16 @@ func Test(path string) {
 	for i := 1; i <= 1; i++ {
 		fmt.Printf("loading file %d\n", i)
 		//path = path + "2015-09-0" + strconv.Itoa(i) + ".csv"
-		path = "out.csv"
+		path = "medium_test.csv"
 
 		dPoints, err := ImportData(path)
+		//fmt.Println(len(dPoints_data))
+		//length := 54921
+		//dPoints := make([]DataPoint, length)
+
+		//copy(dPoints, dPoints_data[:length])
+
+		fmt.Println(len(dPoints))
 		if err != nil {
 			log.Println(err)
 		}
@@ -39,7 +61,10 @@ func Test(path string) {
 		}
 
 	}
+	fmt.Printf("Total number of nodes, include non-leaf, %d\n", len(dTree.nodes))
+
 	batches := dTree.ToDataBatch()
+	PrintMemUsage()
 
 	fmt.Println(len(batches))
 	//fmt.Println(batches[0])
@@ -52,6 +77,7 @@ func Test(path string) {
 	for _, batch := range batches {
 		db.Feed(batch)
 	}
+	PrintMemUsage()
 
 	fmt.Println("Start Executing Query...")
 
