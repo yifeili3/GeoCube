@@ -25,7 +25,7 @@ func bToMb(b uint64) uint64 {
 func Test(path string) {
 	//dPoints = dPoints[:20]
 	pDims := []uint{1, 0}
-	pCaps := []uint{200, 200}
+	pCaps := []uint{100, 100}
 
 	initMins := []float64{40.75 - 0.3, -73.925 - 0.3}
 	initMaxs := []float64{40.75 + 0.3, -73.925 + 0.3}
