@@ -16,7 +16,7 @@ import (
 const (
 	dbRootPath     = "./db/"
 	dataArraySize  = 0 // Jade: should this dataArraySize to be initialized as this much?
-	LRUSize        = 400
+	LRUSize        = 5000
 	batchReadThres = 20
 )
 
