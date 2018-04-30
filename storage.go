@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math"
 	"math/rand"
+	"net"
 	"os"
 	"path"
 	"strconv"
@@ -18,11 +20,13 @@ const (
 	dataArraySize  = 0 // Jade: should this dataArraySize to be initialized as this much?
 	LRUSize        = 400
 	batchReadThres = 20
+	tcpPort        = 1003
 )
 
 type DB struct {
 	CubeMetaMap map[int]string    //  key: treeNodeidx Value: metafilepath
 	Cube        map[int]*MetaCube // fixed size
+	TCPListener net.Listener
 }
 
 type CubeCell struct {
@@ -61,6 +65,9 @@ func InitDB() (*DB, error) {
 	db := new(DB)
 	db.CubeMetaMap = make(map[int]string)
 	db.Cube = make(map[int]*MetaCube)
+	l, err = net.Listen("tcp", ":"+strconv.Itoa(tcpPort))
+	check(err)
+	db.TCPListener = l
 	/*
 		dirs, err := ioutil.ReadDir(dbRootPath)
 		if err != nil {
@@ -84,6 +91,22 @@ func InitDB() (*DB, error) {
 	*/
 	return db, nil
 
+}
+
+func (db *DB) DatabaseTCPListener() {
+	for {
+		c, err := db.TCPListener.Accept()
+		if err != nil {
+			log.Println(err)
+		}
+		go db.HandleTCPConnection(c)
+	}
+}
+
+func (db *DB) HandleTCPConnection(c net.Conn) {
+	defer c.Close()
+	// handle two conditions: 1. send data request 2. query request
+	b := ioutil.ReadAll(conn)
 }
 
 // shuffleCube guarantees the cubeIndex Cube is in memory
