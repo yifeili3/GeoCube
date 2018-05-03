@@ -7,6 +7,10 @@ import (
 	"strconv"
 )
 
+const (
+	serverBase = "172.22.154.132"
+)
+
 type DataPoint struct {
 	// Idx is the fake 2d index of the data point for the particular
 	// treenode (cube), need to be updated everytime the inherited
@@ -106,4 +110,41 @@ func (d *dataSequence) MarshalSequenceData() ([]byte, error) {
 		}
 	*/
 	return buf, nil
+}
+
+/*** Utility Function******/
+
+//GetID ...
+func GetID() int {
+	return CalculateID(GetIpv4Address())
+}
+
+//GetIpv4Address ..
+func GetIpv4Address() string {
+	addrs, _ := net.InterfaceAddrs()
+	var ipaddr string
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				ipaddr = ipnet.IP.String()
+			}
+		}
+	}
+	return ipaddr
+}
+
+//CalculateID ...Map current ip address base off vm1 ip address
+func CalculateID(serverAddr string) int {
+	addr, err := strconv.Atoi(serverAddr[12:14])
+	if err != nil {
+		log.Fatal(">Wrong ip Address")
+	}
+	base, _ := strconv.Atoi(serverBase[12:14])
+	return addr - base + 1
+}
+
+//CalculateIP ...Map current id base off vm1 ip address
+func CalculateIP(id int) string {
+	base, _ := strconv.Atoi(serverBase[12:14])
+	return serverBase[0:12] + strconv.Itoa(base+id-1)
 }
