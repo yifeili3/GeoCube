@@ -1,4 +1,4 @@
-package Coordinator
+package main
 
 import (
 	"log"
