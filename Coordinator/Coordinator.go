@@ -89,6 +89,7 @@ func (co *Coord) HandleClientRequests(client net.Conn) {
 	var buf = make([]byte, 20000)
 	count := 0
 	for {
+		//TODO: n := ioutil.ReadAll(client)
 		n, err := client.Read(buf[count:])
 		if n == 0 {
 			break
@@ -117,6 +118,13 @@ func (co *Coord) ClientListener() chan net.Conn {
 	return ch
 }
 
+/*
+func main()
+	con := ClientListener()
+	for{
+		go HandleClientRequests(<-con)
+	}
+*/
 //WorkerListener ...
 func (co *Coord) WorkerListener() chan net.Conn {
 	ch := make(chan net.Conn)
