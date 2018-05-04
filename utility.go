@@ -163,7 +163,7 @@ func CalculateIP(id int) string {
 /*
 	MarshalDBtoByte marshal databatch into byte array
 */
-func MarshalDBtoByte(batch DataBatch) []byte {
+func MarshalDBtoByte(batch *DataBatch) []byte {
 
 	data := make([]byte, 0)
 
@@ -310,10 +310,40 @@ func marshalFloat64Array(fArray []float64) []byte {
 	return ret
 }
 
-func MarshalTree() {
-
+func MarshalTree(dTree *DTree) []byte {
+	mResult, err := json.Marshal(dTree)
+	if err != nil {
+		log.Println("Error Converting Tree to String:", err)
+	}
+	return mResult
 }
 
-func UnMarshalTree() {
+func UnMarshalTree(jsArray []byte) *DTree {
+	dTree := new(DTree)
+	if jsonArray != nil {
+		err = json.Unmarshal(jsonArray, &dTree)
+		if err != nil {
+			log.Println("Error Parse Json Tree:", err)
+		}
+	}
+	return dTree
+}
 
+func MarshalQuery(query *Query) []byte {
+	mResult, err := json.Marshal(query)
+	if err != nil {
+		log.Println("Error Converting Query to String:", err)
+	}
+	return mResult
+}
+
+func UnMarshalQuery(jsArray []byte) *Query {
+	query := new(Query)
+	if jsonArray != nil {
+		err = json.Unmarshal(jsonArray, &query)
+		if err != nil {
+			log.Println("Error Parse Query:", err)
+		}
+	}
+	return query
 }

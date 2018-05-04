@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"sync"
@@ -9,7 +11,7 @@ import (
 
 const (
 	workerListernerPort = 9008
-	wokerNumber         = 14
+	workerNumber        = 14
 )
 
 type WorkerInfo struct {
@@ -23,10 +25,10 @@ type ClientInfo struct {
 }
 
 type Client struct {
-	id             int
-	workerList     []WorkerInfo
-	treeMetadata   *DTree
-	clientListener net.Listener
+	id           int
+	workerList   []WorkerInfo
+	treeMetadata *DTree
+	leafMap      map[int][]DataBatch
 }
 
 //InitClient ...
@@ -52,8 +54,9 @@ func InitClient() (client *Client, err error) {
 
 	client = &Client{
 		id:           GetID(),
-		workerList:   make([]WorkerInfo, wokerNumber),
+		workerList:   make([]WorkerInfo, workerNumber),
 		treeMetadata: dTree,
+		leafMap:      make(map[int][]DataBatch, workerNumber),
 	}
 
 	//fill worker info
@@ -63,14 +66,17 @@ func InitClient() (client *Client, err error) {
 		10: "172.22.154.230", 11: "172.22.156.230", 12: "172.22.158.230",
 		13: "172.22.154.231", 14: "172.22.156.231", 15: "172.22.158.231",
 	}
-	for i := 0; i < wokerNumber; i++ {
+	for i := 1; i <= workerNumber; i++ {
 		client.workerList[i] = WorkerInfo{
-			id:      1 + i + 1, // Client ID = 1, worker ID = 2 - 15
+			id:      i, // Client ID = 1, worker ID = 2 - 15
 			address: net.TCPAddr{IP: net.ParseIP(idip[i]), Port: workerListernerPort},
 		}
+		//  info of cubes that store on one worker
+		var db []DataBatch
+		client.leafMap[i] = db
 	}
-	return client, err
 
+	return client, err
 }
 
 // Start do the following job:
@@ -88,7 +94,7 @@ func (cl *Client) Run(dataPath string) (err error) {
 		panic(err)
 	}
 
-	fmt.Printf("Tree build finished. Total number of nodes, include non-leaf, %d\n", len(cl.treeMetadata.nodes))
+	fmt.Printf("Tree build finished. Total number of nodes, include non-leaf, %d\n", len(cl.treeMetadata.Nodes))
 	// TODO: (Jade) List of Databatches by tree. Also the map of which index is in which worker
 	//ToDataBatch()
 
@@ -126,28 +132,64 @@ func (cl *Client) Execute(qs []*Query) (err error) {
 
 func (cl *Client) Sync() (err error) {
 
-	//TODO: Send Tree
-	//tree := marshalTree(cl.treeMetadata)
-	//leafmap databatches :=
+	tree := MarshalTree(cl.treeMetadata)
+	msg := Message{Type: "Tree", MsgBytes: tree}
+	treeMsg, _ := json.Marshal(msg)
+
 	for _, peer := range cl.workerList {
 		conn, err := net.Dial("tcp", peer.address.String())
 		if err != nil {
+			log.Printf("Cannot connect to worker %d \n", peer.id)
 			return err
 		}
-		//conn.Write(tree)
-		//conn.Write(leafmap)
+
+		_, err = conn.Write(treeMsg)
+		if err != nil {
+			log.Printf("Cannot send tree to worker %d \n", peer.id)
+		}
+
+		for _, batches := range cl.leafMap {
+			for _, batch := range batches {
+				b := MarshalDBtoByte(&batch)
+				msg := Message{Type: "DataBatch", MsgBytes: b}
+				dataBatchMsg, _ := json.Marshal(msg)
+
+				_, err = conn.Write(dataBatchMsg)
+				if err != nil {
+					log.Printf("Cannot send databatches to worker %d \n", peer.id)
+				}
+			}
+		}
 		conn.Close()
 	}
 	return nil
 }
 
+//TODO:
 func (cl *Client) executeQuery(q *Query) (err error) {
-	//TreeSearch to find which worker to route query to
-
+	//TODO: TreeSearch to find which worker to route query to
+	workerid := FindWorker(q)
 	//send query to worker
-
+	dest := cl.workerList[workerid]
+	conn, err := net.Dial("tcp", dest.address.String())
+	if err != nil {
+		log.Printf("Cannot connect to worker %d \n", dest.id)
+		return err
+	}
+	query := MarshalQuery(q)
+	msg := Message{Type: "Query", MsgBytes: query}
+	qmsg, _ := json.Marshal(msg)
+	_, err = conn.Write(qmsg)
+	if err != nil {
+		log.Printf("Cannot send query to worker %d \n", dest.id)
+	}
 	// wait for results
-
+	b, err := ioutil.ReadAll(conn)
+	if err != nil {
+		log.Println(err)
+	}
+	//TODO: convert to DataPoints
+	//Extention: handle returned results (aggregate)
 	return nil
 }
 
