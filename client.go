@@ -25,7 +25,6 @@ type ClientInfo struct {
 }
 
 type Client struct {
-	id           int
 	workerList   []WorkerInfo
 	treeMetadata *DTree
 	leafMap      map[int][]DataBatch
@@ -53,7 +52,6 @@ func InitClient() (client *Client, err error) {
 	dTree := InitTree(pDims, pCaps, splitThresRatio, initMins, initMaxs)
 
 	client = &Client{
-		id:           GetID(),
 		workerList:   make([]WorkerInfo, workerNumber),
 		treeMetadata: dTree,
 		leafMap:      make(map[int][]DataBatch, workerNumber),

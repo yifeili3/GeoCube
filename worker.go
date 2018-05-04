@@ -4,6 +4,8 @@
 package main
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"log"
 	"net"
 	"strconv"
@@ -46,19 +48,26 @@ func InitWorker() (w *Worker, err error) {
 		panic(err)
 	}
 
+	idip := map[int]string{1: "172.22.154.227", 2: "172.22.156.227", 3: "172.22.158.227",
+		4: "172.22.154.228", 5: "172.22.156.228", 6: "172.22.158.228",
+		7: "172.22.154.229", 8: "172.22.156.229", 9: "172.22.158.229",
+		10: "172.22.154.230", 11: "172.22.156.230", 12: "172.22.158.230",
+		13: "172.22.154.231", 14: "172.22.156.231", 15: "172.22.158.231",
+	}
+
 	w = &Worker{
-		id:             util.GetID(),
+		id:             util.GetID(idip),
 		peerList:       make([]peerInfo, 13),
 		clientListener: clientConn,
 		peerListener:   peerConn,
 		db:             tempdb,
 	}
 
-	for i := 0; i < 14; i++ {
-		if i != w.id-1 {
+	for i := 1; i < 14; i++ {
+		if i != w.id {
 			w.peerList[i] = peerInfo{
-				id:      i + 1,
-				address: net.TCPAddr{IP: net.ParseIP(util.CalculateIP(i + 1)), Port: tcpPeerListenerPort},
+				id:      i,
+				address: net.TCPAddr{IP: net.ParseIP(idip[i]), Port: tcpPeerListenerPort},
 			}
 		}
 	}
@@ -68,21 +77,28 @@ func InitWorker() (w *Worker, err error) {
 
 //HandleClientRequests ..
 func (w *Worker) HandleClientRequests(client net.Conn) {
+	b, err := ioutil.ReadAll(client)
+	if err != nil {
+		log.Println("unable to read from coordinator")
+	}
 
-	var buf = make([]byte, 20000)
-	count := 0
-	for {
-		//TODO: n := ioutil.ReadAll(client)
-		n, err := client.Read(buf[count:])
-		if n == 0 {
-			break
-		}
-		count += n
+	msg := new(Message)
+	if b != nil {
+		err = json.Unmarshal(b, &msg)
 		if err != nil {
-			break
+			log.Println("Error Parse message:", err)
 		}
 	}
-	//TODO:Unmarshal Query, select different queries
+	switch msg.Type {
+	case "Tree":
+		w.dTree = UnMarshalTree(msg.MsgBytes)
+	case "DataBatch":
+		w.db.Feed(UnmarshalBytetoDB(msg.MsgBytes))
+	case "Query":
+		//TODO:: parse query and execute it
+	default:
+		log.Println("Unrecognized message")
+	}
 
 }
 
@@ -120,26 +136,9 @@ func (w *Worker) PeerListener() chan net.Conn {
 
 //HandlePeerResults  ...
 func (w *Worker) HandlePeerResults(peer net.Conn) {
-	var buf = make([]byte, 20000000)
-	count := 0
-	for {
-		n, err := peer.Read(buf[count:])
-		if n == 0 {
-			break
-		}
-		count += n
-		if err != nil {
-			break
-		}
-	}
+	b, err := ioutil.ReadAll(peer)
 	//TODO:Unmarshal Message********
 
-}
-
-func (w *Worker) feedToDB(databatches []DataBatch) {
-	for _, batch := range databatches {
-		w.db.Feed(batch)
-	}
 }
 
 func (worker *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {

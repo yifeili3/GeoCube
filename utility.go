@@ -122,8 +122,13 @@ func (d *dataSequence) MarshalSequenceData() ([]byte, error) {
 /*** Utility Function******/
 
 //GetID ...
-func GetID() int {
-	return CalculateID(GetIpv4Address())
+func GetID(idip map[int]string) int {
+	for k, v := range idip {
+		if v == GetIpv4Address() {
+			return k
+		}
+	}
+	return -1
 }
 
 //GetIpv4Address ..
@@ -138,22 +143,6 @@ func GetIpv4Address() string {
 		}
 	}
 	return ipaddr
-}
-
-//CalculateID ...Map current ip address base off vm1 ip address
-func CalculateID(serverAddr string) int {
-	addr, err := strconv.Atoi(serverAddr[12:14])
-	if err != nil {
-		log.Fatal(">Wrong ip Address")
-	}
-	base, _ := strconv.Atoi(serverBase[12:14])
-	return addr - base + 1
-}
-
-//CalculateIP ...Map current id base off vm1 ip address
-func CalculateIP(id int) string {
-	base, _ := strconv.Atoi(serverBase[12:14])
-	return serverBase[0:12] + strconv.Itoa(base+id-1)
 }
 
 //function for marshal tree
