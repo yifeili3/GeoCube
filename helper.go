@@ -1,10 +1,5 @@
 package main
 
-import (
-	"encoding/json"
-	"unsafe"
-)
-
 /*
 Pick the first occurence when duplicates exist
 */
@@ -34,6 +29,7 @@ func argmin(values []float64) int {
 	}
 	return min_ind
 }
+<<<<<<< HEAD
 
 /*
 	MarshalDPtoByte marshal databatch into byte array
@@ -219,3 +215,5 @@ func marshalFloat64Array(fArray []float64) []byte {
 	}
 	return ret
 }
+=======
+>>>>>>> 26f5a55e1e80ed8f48bf3202cb5b963f6352d0c1

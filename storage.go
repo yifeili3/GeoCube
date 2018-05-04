@@ -321,7 +321,7 @@ func (db *DB) CubeExists(cubeId int) bool {
 
 // Feed accepts data batch from upper layer and add data to DB's cube map, according to whether the cube is in map
 // if the cube is not in map, then there's a replacement of memory from IO
-func (db *DB) Feed(batch DataBatch) error {
+func (db *DB) Feed(batch *DataBatch) error {
 	cubeSize := int(batch.Capacity)
 	var err error
 	if !db.CubeExists(batch.CubeId) { // even cube file does not existed (This is a new cube file), then we

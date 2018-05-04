@@ -1,0 +1,161 @@
+10x10
+Total number of nodes, include non-leaf, 4033
+Alloc = 33 MiB  TotalAlloc = 97 MiB     Sys = 40 MiB    NumGC = 13
+2017
+Start Initializing DB...
+Alloc = 41 MiB  TotalAlloc = 136 MiB    Sys = 58 MiB    NumGC = 15
+Start Executing Query...
+2018/04/30 17:04:23 Time to load all data: &s
+%!(EXTRA time.Duration=65.2157ms)
+2018/04/30 17:04:24 Time Overall: &s
+%!(EXTRA time.Duration=257.1719ms)
+2018/04/30 17:04:24 Total Conflict Number: 111507, among 54921 queries
+yzhu44@cs-sanmi-yzhu44:/mnt/c/Users/yzhu44/Dropbox/Exclude_sync/Courses/Grad4 Spring 2018/CS525/GeoCube$ go run *.go
+20x20
+loading file 1
+2018/04/30 17:04:35 EOF
+54921
+Total number of nodes, include non-leaf, 999
+Alloc = 29 MiB  TotalAlloc = 94 MiB     Sys = 40 MiB    NumGC = 13
+500
+Start Initializing DB...
+Alloc = 42 MiB  TotalAlloc = 139 MiB    Sys = 56 MiB    NumGC = 15
+Start Executing Query...
+2018/04/30 17:04:35 Time to load all data: &s
+%!(EXTRA time.Duration=62.0012ms)
+2018/04/30 17:04:35 Time Overall: &s
+%!(EXTRA time.Duration=286.4459ms)
+2018/04/30 17:04:35 Total Conflict Number: 160115, among 54921 queries
+yzhu44@cs-sanmi-yzhu44:/mnt/c/Users/yzhu44/Dropbox/Exclude_sync/Courses/Grad4 Spring 2018/CS525/GeoCube$ go run *.go
+30x30
+loading file 1
+2018/04/30 17:04:46 EOF
+54921
+Total number of nodes, include non-leaf, 495
+Alloc = 29 MiB  TotalAlloc = 95 MiB     Sys = 40 MiB    NumGC = 13
+248
+Start Initializing DB...
+Alloc = 43 MiB  TotalAlloc = 140 MiB    Sys = 57 MiB    NumGC = 15
+Start Executing Query...
+2018/04/30 17:04:46 Time to load all data: &s
+%!(EXTRA time.Duration=75.1577ms)
+2018/04/30 17:04:46 Time Overall: &s
+%!(EXTRA time.Duration=344.3998ms)
+2018/04/30 17:04:46 Total Conflict Number: 190425, among 54921 queries
+yzhu44@cs-sanmi-yzhu44:/mnt/c/Users/yzhu44/Dropbox/Exclude_sync/Courses/Grad4 Spring 2018/CS525/GeoCube$ go run *.go
+40x40
+loading file 1
+2018/04/30 17:04:58 EOF
+54921
+Total number of nodes, include non-leaf, 255
+Alloc = 29 MiB  TotalAlloc = 96 MiB     Sys = 40 MiB    NumGC = 13
+128
+Start Initializing DB...
+Alloc = 44 MiB  TotalAlloc = 141 MiB    Sys = 55 MiB    NumGC = 15
+Start Executing Query...
+2018/04/30 17:04:59 Time to load all data: &s
+%!(EXTRA time.Duration=69.4086ms)
+2018/04/30 17:04:59 Time Overall: &s
+%!(EXTRA time.Duration=394.346ms)
+2018/04/30 17:04:59 Total Conflict Number: 263065, among 54921 queries
+yzhu44@cs-sanmi-yzhu44:/mnt/c/Users/yzhu44/Dropbox/Exclude_sync/Courses/Grad4 Spring 2018/CS525/GeoCube$ go run *.go
+50x50
+loading file 1
+2018/04/30 17:05:08 EOF
+54921
+Total number of nodes, include non-leaf, 127
+Alloc = 31 MiB  TotalAlloc = 84 MiB     Sys = 38 MiB    NumGC = 12
+64
+Start Initializing DB...
+Alloc = 48 MiB  TotalAlloc = 130 MiB    Sys = 55 MiB    NumGC = 14
+Start Executing Query...
+2018/04/30 17:05:09 Time to load all data: &s
+%!(EXTRA time.Duration=65.7537ms)
+2018/04/30 17:05:09 Time Overall: &s
+%!(EXTRA time.Duration=602.0958ms)
+2018/04/30 17:05:09 Total Conflict Number: 511819, among 54921 queries
+yzhu44@cs-sanmi-yzhu44:/mnt/c/Users/yzhu44/Dropbox/Exclude_sync/Courses/Grad4 Spring 2018/CS525/GeoCube$ go run *.go
+60x60
+loading file 1
+2018/04/30 17:05:36 EOF
+54921
+Total number of nodes, include non-leaf, 127
+Alloc = 28 MiB  TotalAlloc = 91 MiB     Sys = 40 MiB    NumGC = 13
+64
+Start Initializing DB...
+Alloc = 39 MiB  TotalAlloc = 139 MiB    Sys = 58 MiB    NumGC = 15
+Start Executing Query...
+2018/04/30 17:05:36 Time to load all data: &s
+%!(EXTRA time.Duration=45.1361ms)
+2018/04/30 17:05:36 Time Overall: &s
+%!(EXTRA time.Duration=498.0115ms)
+2018/04/30 17:05:36 Total Conflict Number: 420675, among 54921 queries
+yzhu44@cs-sanmi-yzhu44:/mnt/c/Users/yzhu44/Dropbox/Exclude_sync/Courses/Grad4 Spring 2018/CS525/GeoCube$ go run *.go
+70x70
+loading file 1
+2018/04/30 17:05:47 EOF
+54921
+Total number of nodes, include non-leaf, 63
+Alloc = 28 MiB  TotalAlloc = 94 MiB     Sys = 40 MiB    NumGC = 13
+32
+Start Initializing DB...
+Alloc = 47 MiB  TotalAlloc = 143 MiB    Sys = 54 MiB    NumGC = 15
+Start Executing Query...
+2018/04/30 17:05:47 Time to load all data: &s
+%!(EXTRA time.Duration=64.3793ms)
+2018/04/30 17:05:48 Time Overall: &s
+%!(EXTRA time.Duration=807.733ms)
+2018/04/30 17:05:48 Total Conflict Number: 682021, among 54921 queries
+yzhu44@cs-sanmi-yzhu44:/mnt/c/Users/yzhu44/Dropbox/Exclude_sync/Courses/Grad4 Spring 2018/CS525/GeoCube$ go run *.go
+80x80
+loading file 1
+2018/04/30 17:06:44 EOF
+54921
+Total number of nodes, include non-leaf, 63
+Alloc = 26 MiB  TotalAlloc = 102 MiB    Sys = 40 MiB    NumGC = 14
+32
+Start Initializing DB...
+Alloc = 46 MiB  TotalAlloc = 151 MiB    Sys = 59 MiB    NumGC = 16
+Start Executing Query...
+2018/04/30 17:06:45 Time to load all data: &s
+%!(EXTRA time.Duration=43.7039ms)
+2018/04/30 17:06:45 Time Overall: &s
+%!(EXTRA time.Duration=580.0705ms)
+2018/04/30 17:06:45 Total Conflict Number: 505387, among 54921 queries
+yzhu44@cs-sanmi-yzhu44:/mnt/c/Users/yzhu44/Dropbox/Exclude_sync/Courses/Grad4 Spring 2018/CS525/GeoCube$ go run *.go
+90x90
+loading file 1
+2018/04/30 17:07:03 EOF
+54921
+Total number of nodes, include non-leaf, 63
+Alloc = 28 MiB  TotalAlloc = 111 MiB    Sys = 42 MiB    NumGC = 14
+32
+Start Initializing DB...
+Alloc = 48 MiB  TotalAlloc = 161 MiB    Sys = 55 MiB    NumGC = 16
+Start Executing Query...
+2018/04/30 17:07:04 Time to load all data: &s
+%!(EXTRA time.Duration=65.466ms)
+2018/04/30 17:07:04 Time Overall: &s
+%!(EXTRA time.Duration=564.6731ms)
+2018/04/30 17:07:04 Total Conflict Number: 486023, among 54921 queries
+yzhu44@cs-sanmi-yzhu44:/mnt/c/Users/yzhu44/Dropbox/Exclude_sync/Courses/Grad4 Spring 2018/CS525/GeoCube$ go run *.go
+100x100
+loading file 1
+2018/04/30 17:07:14 EOF
+54921
+Total number of nodes, include non-leaf, 31
+Alloc = 26 MiB  TotalAlloc = 102 MiB    Sys = 38 MiB    NumGC = 14
+16
+Start Initializing DB...
+Alloc = 50 MiB  TotalAlloc = 152 MiB    Sys = 59 MiB    NumGC = 16
+Start Executing Query...
+2018/04/30 17:07:14 Time to load all data: &s
+%!(EXTRA time.Duration=63.0725ms)
+2018/04/30 17:07:15 Time Overall: &s
+%!(EXTRA time.Duration=842.3006ms)
+2018/04/30 17:07:15 Total Conflict Number: 973605, among 54921 queries
+
+
+Conclusion: comparing 50x50 vs 60x60, and 70x70 80x80 90x90, the number of nodes doesn't increase, 
+but the conflict decreases. Thus, having large cube size won't increase conflict number, but the split 
+decreases the conflict number 

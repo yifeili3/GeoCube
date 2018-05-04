@@ -4,8 +4,10 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"math"
 	"math/rand"
 )
@@ -19,50 +21,50 @@ type Cube struct {
 }
 
 type DTreeNode struct {
-	isLeaf bool
+	IsLeaf bool
 	//parent,left,right node index
 	//pInd uint
-	lInd uint
-	rInd uint
+	LInd uint
+	RInd uint
 
 	//min max for each dimension
-	mins     []float64
-	maxs     []float64
-	cellVals []float64
+	Mins     []float64
+	Maxs     []float64
+	CellVals []float64
 
-	//capacity in each node for each dim
+	//Capacity in each node for each dim
 	//depends on the cache design, dimension can be sorted by priority
 	//least important data comes first
-	dims  []uint
-	dCaps []uint
+	Dims  []uint
+	DCaps []uint
 
-	capacity uint
-	currNum  uint
+	Capacity uint
+	CurrNum  uint
 
-	splitDim uint
-	splitVal float64
+	SplitDim uint
+	SplitVal float64
 }
 
-func (node *DTreeNode) initTreeNode(mins []float64, maxs []float64, dims []uint, dCaps []uint) {
-	node.mins = make([]float64, len(mins))
-	copy(node.mins, mins)
-	node.maxs = make([]float64, len(maxs))
-	copy(node.maxs, maxs)
-	node.dims = make([]uint, len(dims))
-	copy(node.dims, dims)
-	node.dCaps = make([]uint, len(dCaps))
-	copy(node.dCaps, dCaps)
+func (node *DTreeNode) initTreeNode(Mins []float64, Maxs []float64, Dims []uint, DCaps []uint) {
+	node.Mins = make([]float64, len(Mins))
+	copy(node.Mins, Mins)
+	node.Maxs = make([]float64, len(Maxs))
+	copy(node.Maxs, Maxs)
+	node.Dims = make([]uint, len(Dims))
+	copy(node.Dims, Dims)
+	node.DCaps = make([]uint, len(DCaps))
+	copy(node.DCaps, DCaps)
 
-	node.cellVals = make([]float64, len(node.mins))
-	node.capacity = uint(1)
-	for i, c := range node.dCaps {
-		node.cellVals[i] = (node.maxs[i] - node.mins[i]) / float64(c)
-		node.capacity *= c
+	node.CellVals = make([]float64, len(node.Mins))
+	node.Capacity = uint(1)
+	for i, c := range node.DCaps {
+		node.CellVals[i] = (node.Maxs[i] - node.Mins[i]) / float64(c)
+		node.Capacity *= c
 	}
-	node.isLeaf = true
-	node.lInd = 0 //0 is an invalid value for child ind
-	node.rInd = 0
-	node.currNum = 0
+	node.IsLeaf = true
+	node.LInd = 0 //0 is an invalid value for child ind
+	node.RInd = 0
+	node.CurrNum = 0
 }
 
 // Check the query values are in the min max range
@@ -71,16 +73,16 @@ func (node *DTreeNode) checkRangeByVal(queryDims []uint, queryDimVals []float64)
 	for i, d := range queryDims {
 		v := queryDimVals[i]
 		checked := false
-		for j, d2 := range node.dims {
+		for j, d2 := range node.Dims {
 			if d != d2 {
 				continue
 			}
-			if v < node.mins[j] {
-				err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum %f", v, d, node.mins[j]))
+			if v < node.Mins[j] {
+				err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum %f", v, d, node.Mins[j]))
 				fmt.Println(err)
 				return err
-			} else if v > node.maxs[j] {
-				err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds maximun %f", v, d, node.maxs[j]))
+			} else if v > node.Maxs[j] {
+				err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds maximun %f", v, d, node.Maxs[j]))
 				fmt.Println(err)
 				return err
 			}
@@ -96,19 +98,19 @@ func (node *DTreeNode) checkRangeByVal(queryDims []uint, queryDimVals []float64)
 }
 
 func (node *DTreeNode) checkRange(point *DataPoint) error {
-	for i, d := range node.dims {
+	for i, d := range node.Dims {
 		if int(d) >= len(point.FArr) {
 			err := errors.New(fmt.Sprintf("Try to access dim %d, exceeds len %d", d, len(point.FArr)))
 			fmt.Println(err)
 			return err
 		}
 		v := point.getFloatValByDim(d)
-		if v < node.mins[i] {
-			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum %f", v, d, node.mins[i]))
+		if v < node.Mins[i] {
+			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds minimum %f", v, d, node.Mins[i]))
 			fmt.Println(err)
 			return err
-		} else if v > node.maxs[i] {
-			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds maximun %f", v, d, node.maxs[i]))
+		} else if v > node.Maxs[i] {
+			err := errors.New(fmt.Sprintf("Data has value %f on dim %d, exceeds maximun %f", v, d, node.Maxs[i]))
 			fmt.Println(err)
 			return err
 		}
@@ -124,10 +126,10 @@ func mapInd1d(x, xmin, cell float64) int {
 func (node *DTreeNode) MapInd(point *DataPoint) int {
 
 	ind := 0
-	for i, d := range node.dims {
+	for i, d := range node.Dims {
 		v := point.getFloatValByDim(d)
-		ind *= int(node.dCaps[i])
-		ind += mapInd1d(v, node.mins[i], node.cellVals[i])
+		ind *= int(node.DCaps[i])
+		ind += mapInd1d(v, node.Mins[i], node.CellVals[i])
 	}
 	point.Idx = ind
 	return ind
@@ -142,15 +144,15 @@ func (node *DTreeNode) MapIndByVal(queryDims []uint, queryDimVals []float64) (in
 	}
 
 	ind := 0
-	for i, d := range node.dims {
+	for i, d := range node.Dims {
 		v, exists := qDict[d]
 		if !exists {
 			err := errors.New(fmt.Sprintf("Dimension %d not exist in data", d))
 			fmt.Println(err)
 			return -1, err
 		}
-		ind *= int(node.dCaps[i])
-		ind += mapInd1d(v, node.mins[i], node.cellVals[i])
+		ind *= int(node.DCaps[i])
+		ind += mapInd1d(v, node.Mins[i], node.CellVals[i])
 	}
 	return ind, nil
 }
@@ -161,8 +163,8 @@ func (node *DTreeNode) FixValueOrder(queryDims []uint, queryDimVals []float64) (
 	for i, d := range queryDims {
 		qDict[d] = queryDimVals[i]
 	}
-	val := make([]float64, len(node.dims))
-	for i, d := range node.dims {
+	val := make([]float64, len(node.Dims))
+	for i, d := range node.Dims {
 		v, exists := qDict[d]
 		if !exists {
 			err := errors.New(fmt.Sprintf("Dimension %d not exist in data", d))
@@ -178,16 +180,16 @@ func (node *DTreeNode) FixValueOrder(queryDims []uint, queryDimVals []float64) (
 func (node *DTreeNode) Corners() ([][]float64, error) {
 	// The first dim of corners specify each corner
 	// The second dim specifies the dimension of each value
-	// Consistent to node.dims' order
-	corners := make([][]float64, int(math.Pow(2, float64(len(node.dims)))))
+	// Consistent to node.Dims' order
+	corners := make([][]float64, int(math.Pow(2, float64(len(node.Dims)))))
 	for i := range corners {
-		corners[i] = make([]float64, len(node.dims))
+		corners[i] = make([]float64, len(node.Dims))
 		j := i
-		for k := range node.dims {
+		for k := range node.Dims {
 			if j%2 == 0 { //min corner of that dim
-				corners[i][k] = node.mins[k]
+				corners[i][k] = node.Mins[k]
 			} else { //max corner of that dim
-				corners[i][k] = node.maxs[k]
+				corners[i][k] = node.Maxs[k]
 			}
 			j /= 2
 		}
@@ -200,54 +202,78 @@ func (node *DTreeNode) Corners() ([][]float64, error) {
 func (node *DTreeNode) BoundaryConstrain(dataDimVals []float64) ([][]float64, error) {
 	// The first dim of outliers specify each outlier
 	// The second dim specifies the dimension of each value
-	// Consistent to node.dims' order
-	constrainPoints := make([][]float64, 2*len(node.dims))
+	// Consistent to node.Dims' order
+	constrainPoints := make([][]float64, 2*len(node.Dims))
 	for i := range constrainPoints {
-		constrainPoints[i] = make([]float64, len(node.dims))
+		constrainPoints[i] = make([]float64, len(node.Dims))
 		copy(constrainPoints[i], dataDimVals)
 		dim := i / 2
 		if i%2 == 0 {
-			constrainPoints[i][dim] = node.mins[dim]
+			constrainPoints[i][dim] = node.Mins[dim]
 		} else {
-			constrainPoints[i][dim] = node.maxs[dim]
+			constrainPoints[i][dim] = node.Maxs[dim]
 		}
 	}
 	return constrainPoints, nil
 }
 
+// Return False immediately if any requirement is not satisfied to save time
+// Query Operations in each dim: 0 =; 1 >; -1 <, etc
+func (node *DTreeNode) RangeCheck(queryDimVals []float64, queryDimOpts []int, qDict map[uint][]int) bool {
+
+	for _, dim := range node.Dims {
+		if _, exists := qDict[dim]; !exists {
+			// Skip this dimension (satisfied)
+			continue
+		}
+		for _, qInd := range qDict[dim] {
+			if queryDimOpts[qInd] == 0 {
+				if queryDimVals[qInd] < node.Mins[dim] || queryDimVals[qInd] > node.Max[dim] {
+					return false
+				}
+			} else if queryDimOpts[qInd] < 0 && queryDimVals[qInd] < node.Mins[dim] {
+				return false
+			} else if queryDimVals[qInd] > node.Maxs[dim] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 type DTree struct {
-	nodes    []DTreeNode
-	nodeData [][]DataPoint
-	dims     []uint
-	//capacity in each node for each dim
-	dCaps      []uint
-	capacity   uint
-	splitThres uint
+	Nodes    []DTreeNode
+	NodeData [][]DataPoint
+	Dims     []uint
+	//Capacity in each node for each dim
+	DCaps      []uint
+	Capacity   uint
+	SplitThres uint
 
 	// nodeBatchMap []uint
-	warnings []string
+	Warnings []string
 }
 
 // Initialize the DTree structure, must be called after declaration
-func InitTree(pDims []uint, pCaps []uint, splitThresRatio float64, initMins []float64, initMaxs []float64) *DTree {
+func InitTree(pDims []uint, pCaps []uint, SplitThresRatio float64, initMins []float64, initMaxs []float64) *DTree {
 	dTree := new(DTree)
-	dTree.dims = make([]uint, len(pDims))
-	copy(dTree.dims, pDims)
+	dTree.Dims = make([]uint, len(pDims))
+	copy(dTree.Dims, pDims)
 
-	dTree.dCaps = make([]uint, len(pCaps))
-	copy(dTree.dCaps, pCaps)
+	dTree.DCaps = make([]uint, len(pCaps))
+	copy(dTree.DCaps, pCaps)
 
-	dTree.capacity = 1
+	dTree.Capacity = 1
 	for _, c := range pCaps {
-		dTree.capacity *= c
+		dTree.Capacity *= c
 	}
-	dTree.splitThres = uint(math.Floor(float64(dTree.capacity) * splitThresRatio))
+	dTree.SplitThres = uint(math.Floor(float64(dTree.Capacity) * SplitThresRatio))
 
-	dTree.nodes = append(dTree.nodes, DTreeNode{})
-	dTree.nodes[0].initTreeNode(initMins, initMaxs, dTree.dims, dTree.dCaps)
+	dTree.Nodes = append(dTree.Nodes, DTreeNode{})
+	dTree.Nodes[0].initTreeNode(initMins, initMaxs, dTree.Dims, dTree.DCaps)
 	//fmt.Println(initMins)
-	//fmt.Println(dTree.nodes[0].mins)
-	dTree.nodeData = append(dTree.nodeData, nil)
+	//fmt.Println(dTree.Nodes[0].Mins)
+	dTree.NodeData = append(dTree.NodeData, nil)
 	return dTree
 }
 
@@ -255,28 +281,28 @@ func InitTree(pDims []uint, pCaps []uint, splitThresRatio float64, initMins []fl
 func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
 	currNodeInd := startNodeInd
 	if startNodeInd == 0 {
-		if err := dTree.nodes[currNodeInd].checkRange(point); err != nil {
+		if err := dTree.Nodes[currNodeInd].checkRange(point); err != nil {
 			return err
 		}
 	}
 
 	//find leaf node
-	for dTree.nodes[currNodeInd].isLeaf == false {
-		v := point.getFloatValByDim(dTree.nodes[currNodeInd].splitDim)
-		if v < dTree.nodes[currNodeInd].splitVal {
-			currNodeInd = dTree.nodes[currNodeInd].lInd
+	for dTree.Nodes[currNodeInd].IsLeaf == false {
+		v := point.getFloatValByDim(dTree.Nodes[currNodeInd].SplitDim)
+		if v < dTree.Nodes[currNodeInd].SplitVal {
+			currNodeInd = dTree.Nodes[currNodeInd].LInd
 		} else {
-			currNodeInd = dTree.nodes[currNodeInd].rInd
+			currNodeInd = dTree.Nodes[currNodeInd].RInd
 		}
 	}
 
-	dTree.nodeData[currNodeInd] = append(dTree.nodeData[currNodeInd], *point)
-	dTree.nodes[currNodeInd].currNum += 1
-	dTree.nodes[currNodeInd].MapInd(&dTree.nodeData[currNodeInd][len(dTree.nodeData[currNodeInd])-1])
+	dTree.NodeData[currNodeInd] = append(dTree.NodeData[currNodeInd], *point)
+	dTree.Nodes[currNodeInd].CurrNum += 1
+	dTree.Nodes[currNodeInd].MapInd(&dTree.NodeData[currNodeInd][len(dTree.NodeData[currNodeInd])-1])
 
-	//!!!fmt.Printf("NodeInd, %d, Threshold number: %d, current length %d\n", currNodeInd, int(dTree.splitThres), len(dTree.nodeData[currNodeInd]))
-	if len(dTree.nodeData[currNodeInd]) >= int(dTree.splitThres) {
-		//if dTree.nodes[currNodeInd].currNum >= dTree.splitThres {
+	//!!!fmt.Printf("NodeInd, %d, Threshold number: %d, current length %d\n", currNodeInd, int(dTree.SplitThres), len(dTree.NodeData[currNodeInd]))
+	if len(dTree.NodeData[currNodeInd]) >= int(dTree.SplitThres) {
+		//if dTree.Nodes[currNodeInd].CurrNum >= dTree.SplitThres {
 		//fmt.Println("split")
 		err := dTree.splitLeaf(currNodeInd)
 		if err != nil {
@@ -286,12 +312,12 @@ func (dTree *DTree) assignData(point *DataPoint, startNodeInd uint) error {
 	return nil
 }
 
-func (dTree *DTree) MedianDeviation(splitNodeInd uint) (bestSplit int, splitDim uint, splitVal float64) {
-	dimCandidateValue := make([]float64, len(dTree.dims))
-	dimCandidateMetric := make([]float64, len(dTree.dims))
-	for j, d := range dTree.dims {
-		extractedData := make([]float64, len(dTree.nodeData[splitNodeInd]))
-		for i, p := range dTree.nodeData[splitNodeInd] {
+func (dTree *DTree) MedianDeviation(splitNodeInd uint) (bestSplit int, SplitDim uint, SplitVal float64) {
+	dimCandidateValue := make([]float64, len(dTree.Dims))
+	dimCandidateMetric := make([]float64, len(dTree.Dims))
+	for j, d := range dTree.Dims {
+		extractedData := make([]float64, len(dTree.NodeData[splitNodeInd]))
+		for i, p := range dTree.NodeData[splitNodeInd] {
 			extractedData[i] = p.getFloatValByDim(d)
 		}
 		targetPosition := len(extractedData) / 2
@@ -299,44 +325,44 @@ func (dTree *DTree) MedianDeviation(splitNodeInd uint) (bestSplit int, splitDim 
 		dimCandidateValue[j] = extractedData[targetPosition]
 
 		dimCandidateMetric[j] = math.Abs(dimCandidateValue[j]-
-			(dTree.nodes[splitNodeInd].maxs[j]+dTree.nodes[splitNodeInd].mins[j])/2.) /
-			(dTree.nodes[splitNodeInd].maxs[j] - dTree.nodes[splitNodeInd].mins[j])
+			(dTree.Nodes[splitNodeInd].Maxs[j]+dTree.Nodes[splitNodeInd].Mins[j])/2.) /
+			(dTree.Nodes[splitNodeInd].Maxs[j] - dTree.Nodes[splitNodeInd].Mins[j])
 	}
 
 	bestSplit = argmax(dimCandidateMetric)
-	splitDim = dTree.dims[bestSplit]
-	splitVal = dimCandidateValue[bestSplit]
+	SplitDim = dTree.Dims[bestSplit]
+	SplitVal = dimCandidateValue[bestSplit]
 	return
 }
 
 /*
-func (dTree *DTree) GiniCoeifficient(splitNodeInd uint) (splitDim uint, splitVal float64) {
+func (dTree *DTree) GiniCoeifficient(splitNodeInd uint) (SplitDim uint, SplitVal float64) {
 }
 */
 
 /*
 useHeuristic = 0: argMax, to split on uniform distributed (to solve the medium skew issue)
-useHeuristic = 1: argMin, to split on skewly distributed (to make child nodes unformly distributed)
+useHeuristic = 1: argMin, to split on skewly distributed (to make child Nodes unformly distributed)
 useHeuristic = 2: argMin first, when medium skew occurs, use argMax
 */
-func (dTree *DTree) DiscreteEntropy(splitNodeInd uint, useHeuristic uint) (bestSplit int, splitDim uint, splitVal float64) {
+func (dTree *DTree) DiscreteEntropy(splitNodeInd uint, useHeuristic uint) (bestSplit int, SplitDim uint, SplitVal float64) {
 
 	// Compute entropy for each dim
-	entropies := make([]float64, len(dTree.dims))
-	for j, d := range dTree.dims {
+	entropies := make([]float64, len(dTree.Dims))
+	for j, d := range dTree.Dims {
 
-		columnCount := make([]float64, int(dTree.nodes[splitNodeInd].dCaps[j]))
+		columnCount := make([]float64, int(dTree.Nodes[splitNodeInd].DCaps[j]))
 		for i, _ := range columnCount {
 			columnCount[i] = 0
 		}
 
-		xmin := dTree.nodes[splitNodeInd].mins[j]
-		cell := dTree.nodes[splitNodeInd].cellVals[j]
-		for _, data := range dTree.nodeData[splitNodeInd] {
+		xmin := dTree.Nodes[splitNodeInd].Mins[j]
+		cell := dTree.Nodes[splitNodeInd].CellVals[j]
+		for _, data := range dTree.NodeData[splitNodeInd] {
 			val := data.getFloatValByDim(d)
 			columnCount[mapInd1d(val, xmin, cell)] += 1
 		}
-		totalCount := float64(len(dTree.nodeData[splitNodeInd]))
+		totalCount := float64(len(dTree.NodeData[splitNodeInd]))
 		entropies[j] = float64(0)
 		for _, count := range columnCount {
 			pValue := count / totalCount
@@ -352,31 +378,31 @@ func (dTree *DTree) DiscreteEntropy(splitNodeInd uint, useHeuristic uint) (bestS
 		} else {
 			bestSplit = argmin(entropies)
 		}
-		splitDim = dTree.dims[bestSplit]
-		//fmt.Printf("Best splt  %d, dim %d, val %f\n", bestSplit, splitDim, splitVal)
-		extractedData := make([]float64, len(dTree.nodeData[splitNodeInd]))
-		for i, p := range dTree.nodeData[splitNodeInd] {
-			extractedData[i] = p.getFloatValByDim(splitDim)
+		SplitDim = dTree.Dims[bestSplit]
+		//fmt.Printf("Best splt  %d, dim %d, val %f\n", bestSplit, SplitDim, SplitVal)
+		extractedData := make([]float64, len(dTree.NodeData[splitNodeInd]))
+		for i, p := range dTree.NodeData[splitNodeInd] {
+			extractedData[i] = p.getFloatValByDim(SplitDim)
 		}
 		targetPosition := len(extractedData) / 2
 		QuickSelect(Float64Slice(extractedData), targetPosition)
-		splitVal = extractedData[targetPosition]
+		SplitVal = extractedData[targetPosition]
 		return
 	} else {
 		bestSplit = argmin(entropies)
-		splitDim = dTree.dims[bestSplit]
-		extractedData := make([]float64, len(dTree.nodeData[splitNodeInd]))
-		for i, p := range dTree.nodeData[splitNodeInd] {
-			extractedData[i] = p.getFloatValByDim(splitDim)
+		SplitDim = dTree.Dims[bestSplit]
+		extractedData := make([]float64, len(dTree.NodeData[splitNodeInd]))
+		for i, p := range dTree.NodeData[splitNodeInd] {
+			extractedData[i] = p.getFloatValByDim(SplitDim)
 		}
 		targetPosition := len(extractedData) / 2
 		QuickSelect(Float64Slice(extractedData), targetPosition)
-		splitVal = extractedData[targetPosition]
+		SplitVal = extractedData[targetPosition]
 
 		leftNum := float64(0)
 		rightNum := float64(0)
 		for _, p := range extractedData {
-			if p < splitVal {
+			if p < SplitVal {
 				leftNum += 1
 			} else {
 				rightNum += 1
@@ -384,19 +410,19 @@ func (dTree *DTree) DiscreteEntropy(splitNodeInd uint, useHeuristic uint) (bestS
 		}
 		sqr := (leftNum + rightNum) * (leftNum + rightNum)
 		if leftNum*rightNum/sqr > 0.2 {
-			//fmt.Printf("Best splt  %d, dim %d, val %f\n", bestSplit, splitDim, splitVal)
+			//fmt.Printf("Best splt  %d, dim %d, val %f\n", bestSplit, SplitDim, SplitVal)
 			return
 		}
 
 		bestSplit = argmax(entropies)
-		splitDim = dTree.dims[bestSplit]
-		//fmt.Printf("Best splt  %d, dim %d, val %f\n", bestSplit, splitDim, splitVal)
-		extractedData = make([]float64, len(dTree.nodeData[splitNodeInd]))
-		for i, p := range dTree.nodeData[splitNodeInd] {
-			extractedData[i] = p.getFloatValByDim(splitDim)
+		SplitDim = dTree.Dims[bestSplit]
+		//fmt.Printf("Best splt  %d, dim %d, val %f\n", bestSplit, SplitDim, SplitVal)
+		extractedData = make([]float64, len(dTree.NodeData[splitNodeInd]))
+		for i, p := range dTree.NodeData[splitNodeInd] {
+			extractedData[i] = p.getFloatValByDim(SplitDim)
 		}
 		QuickSelect(Float64Slice(extractedData), targetPosition)
-		splitVal = extractedData[targetPosition]
+		SplitVal = extractedData[targetPosition]
 		return
 	}
 }
@@ -405,10 +431,10 @@ func (dTree *DTree) DiscreteEntropy(splitNodeInd uint, useHeuristic uint) (bestS
 func (dTree *DTree) splitLeaf(splitNodeInd uint) error {
 	//fmt.Printf("Split node index: %d\n", splitNodeInd)
 
-	if dTree.nodes[splitNodeInd].currNum < uint(len(dTree.nodeData[splitNodeInd])) {
+	if dTree.Nodes[splitNodeInd].CurrNum < uint(len(dTree.NodeData[splitNodeInd])) {
 		//To do: acquire data from worker, currently WRONG if data are not stored
-		dTree.nodeData[splitNodeInd] = append(dTree.nodeData[splitNodeInd], dTree.nodeData[splitNodeInd][0])
-		if dTree.nodes[splitNodeInd].currNum != uint(len(dTree.nodeData[splitNodeInd])) {
+		dTree.NodeData[splitNodeInd] = append(dTree.NodeData[splitNodeInd], dTree.NodeData[splitNodeInd][0])
+		if dTree.Nodes[splitNodeInd].CurrNum != uint(len(dTree.NodeData[splitNodeInd])) {
 			err := errors.New(fmt.Sprintf("Incomplete data on node %d", splitNodeInd))
 			fmt.Println(err)
 			return err
@@ -416,44 +442,44 @@ func (dTree *DTree) splitLeaf(splitNodeInd uint) error {
 	}
 
 	bestSplit := int(0) // index of best split dim
-	//bestSplit, dTree.nodes[splitNodeInd].splitDim, dTree.nodes[splitNodeInd].splitVal = dTree.MedianDeviation(splitNodeInd)
-	bestSplit, dTree.nodes[splitNodeInd].splitDim, dTree.nodes[splitNodeInd].splitVal = dTree.DiscreteEntropy(splitNodeInd, 2)
+	//bestSplit, dTree.Nodes[splitNodeInd].SplitDim, dTree.Nodes[splitNodeInd].SplitVal = dTree.MedianDeviation(splitNodeInd)
+	bestSplit, dTree.Nodes[splitNodeInd].SplitDim, dTree.Nodes[splitNodeInd].SplitVal = dTree.DiscreteEntropy(splitNodeInd, 2)
 
 	/*
-		fmt.Printf("SplitDim %d, splitval %.15f\n", dTree.nodes[splitNodeInd].splitDim, dTree.nodes[splitNodeInd].splitVal)
-		for _, p := range dTree.nodeData[splitNodeInd] {
-			fmt.Println(p.getFloatValByDim(dTree.nodes[splitNodeInd].splitDim), p.getFloatValByDim(uint(1-dTree.nodes[splitNodeInd].splitDim)))
+		fmt.Printf("SplitDim %d, splitval %.15f\n", dTree.Nodes[splitNodeInd].SplitDim, dTree.Nodes[splitNodeInd].SplitVal)
+		for _, p := range dTree.NodeData[splitNodeInd] {
+			fmt.Println(p.getFloatValByDim(dTree.Nodes[splitNodeInd].SplitDim), p.getFloatValByDim(uint(1-dTree.Nodes[splitNodeInd].SplitDim)))
 		}*/
 
-	leftMaxs := make([]float64, len(dTree.dims))
-	copy(leftMaxs, dTree.nodes[splitNodeInd].maxs)
-	leftMaxs[bestSplit] = dTree.nodes[splitNodeInd].splitVal
+	leftMaxs := make([]float64, len(dTree.Dims))
+	copy(leftMaxs, dTree.Nodes[splitNodeInd].Maxs)
+	leftMaxs[bestSplit] = dTree.Nodes[splitNodeInd].SplitVal
 
-	rightMins := make([]float64, len(dTree.dims))
-	copy(rightMins, dTree.nodes[splitNodeInd].mins)
-	rightMins[bestSplit] = dTree.nodes[splitNodeInd].splitVal
+	rightMins := make([]float64, len(dTree.Dims))
+	copy(rightMins, dTree.Nodes[splitNodeInd].Mins)
+	rightMins[bestSplit] = dTree.Nodes[splitNodeInd].SplitVal
 
-	dTree.nodes = append(dTree.nodes, DTreeNode{})
-	leftInd := uint(len(dTree.nodes) - 1)
-	dTree.nodes[leftInd].initTreeNode(dTree.nodes[splitNodeInd].mins, leftMaxs, dTree.dims, dTree.dCaps)
-	dTree.nodeData = append(dTree.nodeData, nil)
-	dTree.nodes[splitNodeInd].lInd = leftInd
+	dTree.Nodes = append(dTree.Nodes, DTreeNode{})
+	leftInd := uint(len(dTree.Nodes) - 1)
+	dTree.Nodes[leftInd].initTreeNode(dTree.Nodes[splitNodeInd].Mins, leftMaxs, dTree.Dims, dTree.DCaps)
+	dTree.NodeData = append(dTree.NodeData, nil)
+	dTree.Nodes[splitNodeInd].LInd = leftInd
 
-	dTree.nodes = append(dTree.nodes, DTreeNode{})
+	dTree.Nodes = append(dTree.Nodes, DTreeNode{})
 	rightInd := leftInd + 1
-	dTree.nodes[rightInd].initTreeNode(rightMins, dTree.nodes[splitNodeInd].maxs, dTree.dims, dTree.dCaps)
-	dTree.nodeData = append(dTree.nodeData, nil)
-	dTree.nodes[splitNodeInd].rInd = rightInd
+	dTree.Nodes[rightInd].initTreeNode(rightMins, dTree.Nodes[splitNodeInd].Maxs, dTree.Dims, dTree.DCaps)
+	dTree.NodeData = append(dTree.NodeData, nil)
+	dTree.Nodes[splitNodeInd].RInd = rightInd
 
 	// This line needs to act before assigning data
-	dTree.nodes[splitNodeInd].isLeaf = false
+	dTree.Nodes[splitNodeInd].IsLeaf = false
 	// move data into left right children
 	//!!!fmt.Printf("Start assign after split, node ind %d\n", splitNodeInd)
-	//!!!fmt.Printf("Num to assign %d\n", len(dTree.nodeData[splitNodeInd]))
-	for _, p := range dTree.nodeData[splitNodeInd] {
+	//!!!fmt.Printf("Num to assign %d\n", len(dTree.NodeData[splitNodeInd]))
+	for _, p := range dTree.NodeData[splitNodeInd] {
 		dTree.assignData(&p, splitNodeInd)
 	}
-	dTree.nodeData[splitNodeInd] = nil
+	dTree.NodeData[splitNodeInd] = nil
 	return nil
 }
 
@@ -467,8 +493,8 @@ func (dTree *DTree) UpdateTree(points []DataPoint) error {
 			return err
 		} else {
 			// Debug
-			//for _, n := range dTree.nodes {
-			//	fmt.Printf("####%d, %d\n", n.lInd, n.rInd)
+			//for _, n := range dTree.Nodes {
+			//	fmt.Printf("####%d, %d\n", n.LInd, n.RInd)
 			//}
 			//fmt.Println(" successfully imported")
 		}
@@ -488,7 +514,7 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 
 	var dict map[uint]bool
 	dict = make(map[uint]bool, 4)
-	for _, d := range dTree.dims {
+	for _, d := range dTree.Dims {
 		dict[d] = true
 	}
 
@@ -506,20 +532,19 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 		qDict[qD] = qDimVals[i]
 	}
 
-	if err := dTree.nodes[0].checkRangeByVal(qDims, qDimVals); err != nil {
+	if err := dTree.Nodes[0].checkRangeByVal(qDims, qDimVals); err != nil {
 		return []int{0}, err
 	}
 
 	var finalNodeList []int
 	currNodeInd := uint(0)
-	// TODO: To make it able to go to two branches: currList, nextList, finalList
-	// find the correct leaf node
-	for dTree.nodes[currNodeInd].isLeaf == false {
-		v := qDict[dTree.nodes[currNodeInd].splitDim] //Change Later
-		if v < dTree.nodes[currNodeInd].splitVal {
-			currNodeInd = dTree.nodes[currNodeInd].lInd
+
+	for dTree.Nodes[currNodeInd].IsLeaf == false {
+		v := qDict[dTree.Nodes[currNodeInd].SplitDim] //Change Later
+		if v < dTree.Nodes[currNodeInd].SplitVal {
+			currNodeInd = dTree.Nodes[currNodeInd].LInd
 		} else {
-			currNodeInd = dTree.nodes[currNodeInd].rInd
+			currNodeInd = dTree.Nodes[currNodeInd].RInd
 		}
 	}
 
@@ -528,13 +553,112 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 	return finalNodeList, nil
 }
 
+// Find all related tree nodes
+// Retrun the indices of node
+func (dTree *DTree) RangeSearch(queryDims []uint, queryDimVals []float64, queryDimOpts []int) ([]int, error) {
+	//remove dimensions not used in tree spliting
+	//fmt.Println(queryDims)
+	//fmt.Println(queryDimVals)
+	var qDims []uint
+	var qDimVals []float64
+	var qDimOpts []int
+
+	var dict map[uint]bool
+	dict = make(map[uint]bool, 4)
+	for _, d := range dTree.Dims {
+		dict[d] = true
+	}
+
+	for i, qD := range queryDims {
+		if _, exists := dict[qD]; exists {
+			qDims = append(qDims, qD)
+			qDimVals = append(qDimVals, queryDimVals[i])
+			qDimOpts = append(qDimOpts, queryDimOpts[i])
+		}
+	}
+
+	// map from search dimension to ARRAY OF INDEX
+	var qDict map[uint][]int
+	qDict = make(map[uint][]int, 4)
+	for i, qD := range qDims {
+		if _, exists := qDict[qD]; exists {
+			qDict[qD] = append(qDict[qD], i)
+		} else {
+			qDict[qD] = make([]int, 0)
+			qDict[qD] = append(qDict[qD], i)
+		}
+	}
+
+	finalNodeList := make([]int, 0)
+	currList := [0]int{}
+	nextList := [1]int{0}
+	// find the list of related leaf nodes
+	for len(nextList) > 0 {
+		currList = nextList
+		nextList := make([]int, 0)
+		for _, nodeInd := range currList {
+			if dTree.Nodes[nodeInd].RangeCheck(qDimVals, qDimOpts, qDict) {
+				if dTree.Nodes[nodeInd].IsLeaf {
+					finalNodeList = append(finalNodeList, nodeInd)
+				} else {
+					nextList = append(nextList, dTree.Nodes[nodeInd].LInd)
+					nextList = append(nextList, dTree.Nodes[nodeInd].RInd)
+				}
+			}
+		}
+	}
+
+	return finalNodeList, nil
+}
+
 func (dTree *DTree) ToDataBatch() []DataBatch {
 	var dataBatches []DataBatch
-	for i, node := range dTree.nodes {
-		if node.isLeaf {
-			dataBatches = append(dataBatches, DataBatch{i, node.capacity, node.dims, node.mins, node.maxs, dTree.nodeData[i]})
+	for i, node := range dTree.Nodes {
+		if node.IsLeaf {
+			dataBatches = append(dataBatches, DataBatch{i, node.Capacity, node.Dims, node.Mins, node.Maxs, dTree.NodeData[i]})
 		}
-		dTree.nodeData[i] = nil
+		dTree.NodeData[i] = nil
 	}
 	return dataBatches
+}
+
+/*
+Convert the DTree information into a string format
+*/
+func (dTree *DTree) ToString(filename string) []byte {
+
+	mResult, err := json.Marshal(dTree)
+	if err != nil {
+		fmt.Println("Error Converting Treee to String:", err)
+	}
+	if filename != "" {
+		err = ioutil.WriteFile(filename, mResult, 0644)
+		if err != nil {
+			fmt.Println("Error Writing Tree file:", err)
+		}
+	}
+	return mResult
+}
+
+/*
+Load the DTree string and construct a DTree structure
+*/
+func LoadDTree(filename string, jsonArray []byte) *DTree {
+	var err error
+	err = nil
+	if filename != "" {
+		jsonArray, err = ioutil.ReadFile(filename)
+		if err != nil {
+			fmt.Println("Error Read Tree File:", err)
+		}
+	}
+
+	dTree := new(DTree)
+	if jsonArray != nil {
+		err = json.Unmarshal(jsonArray, &dTree)
+		if err != nil {
+			fmt.Println("Error Parse Json Tree:", err)
+		}
+	}
+	return dTree
 }
