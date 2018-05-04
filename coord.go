@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func PrintMemUsage() {
+func printMemUsage() {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
@@ -64,7 +64,7 @@ func Test(path string) {
 	fmt.Printf("Total number of nodes, include non-leaf, %d\n", len(dTree.Nodes))
 
 	batches := dTree.ToDataBatch()
-	PrintMemUsage()
+	printMemUsage()
 
 	fmt.Println(len(batches))
 	//fmt.Println(batches[0])
@@ -75,9 +75,9 @@ func Test(path string) {
 		panic(err)
 	}
 	for _, batch := range batches {
-		db.Feed(batch)
+		db.Feed(&batch)
 	}
-	PrintMemUsage()
+	printMemUsage()
 
 	fmt.Println("Start Executing Query...")
 
@@ -87,7 +87,7 @@ func Test(path string) {
 	dTree.ToString(storageName)
 	dTree2 := LoadDTree(storageName, nil)
 
-	worker := Worker{dTree2}
+	worker := Worker{dTree: dTree2}
 	start := time.Now()
 
 	for _, batch := range batches {
@@ -114,6 +114,7 @@ func Test(path string) {
 	log.Printf("Total Conflict Number: %d, among %d queries\n", totalConflictNum, len(qs))
 }
 
+//GenerateFakeQuery ...
 func (dPoint *DataPoint) GenerateFakeQuery() *Query {
 	q1 := InitQuery(1, []uint{1, 0}, []float64{dPoint.getFloatValByDim(uint(1)), dPoint.getFloatValByDim(uint(0))}, []int{0, 0}, 5, "lala")
 	return q1

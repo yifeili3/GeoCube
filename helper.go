@@ -4,28 +4,28 @@ package main
 Pick the first occurence when duplicates exist
 */
 func argmax(values []float64) int {
-	max_v := values[0]
-	max_ind := 0
+	maxV := values[0]
+	maxInd := 0
 	for i, v := range values {
-		if v > max_v {
-			max_v = v
-			max_ind = i
+		if v > maxV {
+			maxV = v
+			maxInd = i
 		}
 	}
-	return max_ind
+	return maxInd
 }
 
 /*
 Pick the first occurence when duplicates exist
 */
 func argmin(values []float64) int {
-	min_v := values[0]
-	min_ind := 0
+	minV := values[0]
+	minInd := 0
 	for i, v := range values {
-		if v < min_v {
-			min_v = v
-			min_ind = i
+		if v < minV {
+			minV = v
+			minInd = i
 		}
 	}
-	return min_ind
+	return minInd
 }

@@ -164,7 +164,8 @@ func (cl *Client) Sync() (err error) {
 //TODO:
 func (cl *Client) executeQuery(q *Query) (err error) {
 	//TODO: TreeSearch to find which worker to route query to
-	workerid := FindWorker(q)
+	//workerid := cl.FindWorker(q)
+	workerid := 1
 	//send query to worker
 	dest := cl.workerList[workerid]
 	conn, err := net.Dial("tcp", dest.address.String())

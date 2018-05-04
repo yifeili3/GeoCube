@@ -181,7 +181,8 @@ func (w *Worker) executeQuery(q *Query) (dp []DataPoint, err error) {
 
 }
 
-func (w *Worker) equalityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
+//EqualityQuery ...
+func (w *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
 	cubeInds, err := worker.dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
 	if err != nil {
 		return nil, 0, err
