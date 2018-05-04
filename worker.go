@@ -4,7 +4,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"strconv"
@@ -202,20 +201,4 @@ func (worker *Worker) RangeQuery(db *DB, query *Query) ([]DataPoint, int, error)
 	}
 	overDrawnNum := totalDrawnNum - len(dataPoints)
 	return dataPoints, overDrawnNum, nil
-}
-
-func (dTree *DTree) KNNQuery(db *DB, query *Query) ([]DataPoint, error) {
-	cubeInds, err := dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
-	if err != nil {
-		return nil, err
-	}
-	// KNN query need to gaurantee the full spatial info(or even more) is provided
-	cubeInd := cubeInds[0]
-	metaInd, err := dTree.Nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
-	fmt.Println(metaInd)
-
-	// TODO: BFS Implementation
-	var dataPoints []DataPoint
-	return dataPoints, nil
-
 }
