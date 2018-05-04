@@ -96,10 +96,26 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 		w.db.Feed(UnmarshalBytetoDB(msg.MsgBytes))
 	case "Query":
 		//TODO:: parse query and execute it
+		q := UnMarshalQuery(msg.MsgBytes)
+		dataPoints, err = w.executeQuery(q)
+		if err != nil {
+			log.Println("No results found")
+			b := json.Marshal(Message{Type: "Error"})
+			w.send(client, b)
+		}
+		//Send query back to client
+		b := MarshalDataPoints(dataPoints)
+		w.send(client, b)
 	default:
 		log.Println("Unrecognized message")
 	}
 
+}
+
+func (w *Worker) send(conn net.Conn, msg []byte) {
+	conn.Write(msg)
+	// Not sure:
+	//conn.Close()
 }
 
 //ClientListener ...
@@ -137,11 +153,35 @@ func (w *Worker) PeerListener() chan net.Conn {
 //HandlePeerResults  ...
 func (w *Worker) HandlePeerResults(peer net.Conn) {
 	b, err := ioutil.ReadAll(peer)
-	//TODO:Unmarshal Message********
+	msg := new(Message)
+	if b != nil {
+		err = json.Unmarshal(b, &msg)
+		if err != nil {
+			log.Println("Error Parse message:", err)
+		}
+	}
+	switch msg.Type {
+	case "PeerRequest":
+		cubeIdx := msg.CubeIndex
+		metaIdx := msg.MetaIndex
+		//Read cube from db
+		dPoints := w.db.ReadSingle(cubeIdx, metaIdx)
+		b := MarshalDataPoints(dPoints)
+		w.send(peer, b)
+	case "DataPoints":
+		// use a channel here to pass dataPoints to RangeQuery
+		dp := new([]DataPoint)
+		dp = UnmarshalDataPoints(msg.MsgBytes)
+		// dpChan <-dp
+	}
 
 }
 
-func (worker *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
+func (w *Worker) executeQuery(q *Query) (dp []DataPoint, err error) {
+
+}
+
+func (w *Worker) equalityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
 	cubeInds, err := worker.dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
 	if err != nil {
 		return nil, 0, err
@@ -176,7 +216,7 @@ func (worker *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, err
 	return dataPoints, conflictNum, nil
 }
 
-func (worker *Worker) RangeQuery(db *DB, query *Query) ([]DataPoint, int, error) {
+func (w *Worker) rangeQuery(db *DB, query *Query) ([]DataPoint, int, error) {
 	cubeInds, err := worker.dTree.RangeSearch(query.QueryDims, query.QueryDimVals)
 	if err != nil {
 		return nil, 0, err

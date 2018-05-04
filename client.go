@@ -131,8 +131,7 @@ func (cl *Client) Execute(qs []*Query) (err error) {
 func (cl *Client) Sync() (err error) {
 
 	tree := MarshalTree(cl.treeMetadata)
-	msg := Message{Type: "Tree", MsgBytes: tree}
-	treeMsg, _ := json.Marshal(msg)
+	treeMsg, _ := json.Marshal(Message{Type: "Tree", MsgBytes: tree})
 
 	for _, peer := range cl.workerList {
 		conn, err := net.Dial("tcp", peer.address.String())
@@ -149,8 +148,7 @@ func (cl *Client) Sync() (err error) {
 		for _, batches := range cl.leafMap {
 			for _, batch := range batches {
 				b := MarshalDBtoByte(&batch)
-				msg := Message{Type: "DataBatch", MsgBytes: b}
-				dataBatchMsg, _ := json.Marshal(msg)
+				dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
 
 				_, err = conn.Write(dataBatchMsg)
 				if err != nil {
@@ -175,8 +173,7 @@ func (cl *Client) executeQuery(q *Query) (err error) {
 		return err
 	}
 	query := MarshalQuery(q)
-	msg := Message{Type: "Query", MsgBytes: query}
-	qmsg, _ := json.Marshal(msg)
+	qmsg, _ := json.Marshal(Message{Type: "Query", MsgBytes: query})
 	_, err = conn.Write(qmsg)
 	if err != nil {
 		log.Printf("Cannot send query to worker %d \n", dest.id)
@@ -186,8 +183,12 @@ func (cl *Client) executeQuery(q *Query) (err error) {
 	if err != nil {
 		log.Println(err)
 	}
-	//TODO: convert to DataPoints
-	//Extention: handle returned results (aggregate)
+	//convert to DataPoints
+	dataPoints := UnmarshalDataPoints(b)
+	if len(dataPoints) == 0 {
+		log.Println("No results found")
+	}
+	//TODO: handle returned results (aggregate)
 	return nil
 }
 
