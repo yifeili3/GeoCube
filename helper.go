@@ -167,6 +167,41 @@ func UnmarshalBytetoDP(data []byte) *DataBatch {
 
 }
 
+func MarshalDataPoints(dPoints []DataPoint) []byte {
+	dPointLength := len(dPoints)
+	data := make([]byte, 0)
+	byteData, _ := json.Marshal(dPointLength)
+	data = append(data, byteData...)
+	for _, dp := range dPoints {
+		header, body := convertDPoint(dp)
+		data = append(data, header...)
+		data = append(data, body...)
+	}
+	return data
+}
+
+func UnmarshalDataPoints(dataArray []byte) []DataPoint {
+	intSize := uint64(unsafe.Sizeof(int(0)))
+	offset := uint64(0)
+	curByte := dataArray[offset : offset+intSize]
+	offset += intSize
+	// Get the length of datapoint
+	var dataPointLength int
+	json.Unmarshal(curByte, dataPointLength)
+	dPoints := make([]DataPoint, dataPointLength)
+	for i := 0; i < dataPointLength; i++ {
+		// header
+		header := dataArray[offset : offset+20]
+		offset += 20
+		_, totalLength, floatNum, intNum, stringNum := getDataHeader(header)
+		dArr := dataArray[offset : offset+uint64(totalLength)]
+		dPoints[i] = convertByteTodPoint(dArr, floatNum, intNum, stringNum)
+		offset += uint64(totalLength)
+	}
+
+	return dPoints
+}
+
 func marshalUintArray(inArray []uint) []byte {
 	ret := make([]byte, 0)
 	for _, uintNum := range inArray {
