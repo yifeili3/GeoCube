@@ -61,7 +61,7 @@ func Test(path string) {
 		}
 
 	}
-	fmt.Printf("Total number of nodes, include non-leaf, %d\n", len(dTree.nodes))
+	fmt.Printf("Total number of nodes, include non-leaf, %d\n", len(dTree.Nodes))
 
 	batches := dTree.ToDataBatch()
 	PrintMemUsage()
@@ -83,28 +83,35 @@ func Test(path string) {
 
 	//q1 := InitQuery(1, []uint{1, 0}, []float64{40.693225860595703, -73.972030639648438}, []int{0, 0}, 5, "lala")
 	//fmt.Println(q1)
+	storageName := "dTree.json"
+	dTree.ToString(storageName)
+	dTree2 := LoadDTree(storageName, nil)
 
-	worker := Worker{dTree}
+	worker := Worker{dTree2}
 	start := time.Now()
 
 	for _, batch := range batches {
 		cubeind := batch.CubeId
 		db.ReadAll(cubeind)
 	}
+	elapsed := time.Since(start)
+	log.Printf("Time to load all data: &s\n", elapsed)
 
-	for _, q := range qs {
-		_, err := worker.EqualityQuery(db, q)
+	totalConflictNum := int(0)
+	for i, q := range qs {
+		dataPoints, conflictNum, err := worker.EqualityQuery(db, q)
+		totalConflictNum += conflictNum
 		if err != nil {
 			panic(err)
 		}
-		/*
-			for _, dPoint := range dataPoints {
-				fmt.Println(dPoint)
-			}*/
+		if len(dataPoints) == 0 {
+			fmt.Println("Fail to find on query index %d\n", i)
+		}
 
 	}
-	elapsed := time.Since(start)
-	log.Printf("Time: &s\n", elapsed)
+	elapsed = time.Since(start)
+	log.Printf("Time Overall: &s\n", elapsed)
+	log.Printf("Total Conflict Number: %d, among %d queries\n", totalConflictNum, len(qs))
 }
 
 func (dPoint *DataPoint) GenerateFakeQuery() *Query {

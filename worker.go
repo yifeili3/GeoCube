@@ -4,6 +4,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"strconv"
@@ -142,27 +143,28 @@ func (w *Worker) feedToDB(databatches []DataBatch) {
 	}
 }
 
-func (w *Worker) EqualityQuery(query *Query) ([]DataPoint, error) {
+func (worker *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
 	cubeInds, err := worker.dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	//fmt.Println(cubeInds)
 
 	var metaInds []int
 	for _, cubeInd := range cubeInds {
-		metaInd, err := worker.dTree.nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
+		metaInd, err := worker.dTree.Nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		} else {
 			metaInds = append(metaInds, metaInd)
 		}
 	}
 
 	var dataPoints []DataPoint
+	var conflictNum = 0
 	for i, cubeInd := range cubeInds {
 
-		dPoints := w.db.ReadSingle(cubeInd, metaInds[i])
+		dPoints := db.ReadSingle(cubeInd, metaInds[i])
 		//fmt.Println(fmt.Sprintf("CubeInd: %d, MetaInd %d", cubeInd, metaInds[i]))
 		//fmt.Println(dPoints)
 		for _, dp := range dPoints {
@@ -171,11 +173,37 @@ func (w *Worker) EqualityQuery(query *Query) ([]DataPoint, error) {
 				dataPoints = append(dataPoints, dp)
 			}
 		}
+		conflictNum = len(dPoints) - len(dataPoints)
 	}
-	return dataPoints, nil
+	return dataPoints, conflictNum, nil
 }
 
-/*
+func (worker *Worker) RangeQuery(db *DB, query *Query) ([]DataPoint, int, error) {
+	cubeInds, err := worker.dTree.RangeSearch(query.QueryDims, query.QueryDimVals)
+	if err != nil {
+		return nil, 0, err
+	}
+	//fmt.Println(cubeInds)
+
+	var dataPoints []DataPoint
+	totalDrawnNum := int(0)
+	for i, cubeInd := range cubeInds {
+
+		dPoints := db.ReadAll(cubeInd)
+		//fmt.Println(fmt.Sprintf("CubeInd: %d, MetaInd %d", cubeInd, metaInds[i]))
+		//fmt.Println(dPoints)
+		for _, dp := range dPoints {
+			if query.CheckPoint(&dp) {
+				//fmt.Println("found")
+				dataPoints = append(dataPoints, dp)
+			}
+		}
+		totalDrawnNum += len(dPoints)
+	}
+	overDrawnNum := totalDrawnNum - len(dataPoints)
+	return dataPoints, overDrawnNum, nil
+}
+
 func (dTree *DTree) KNNQuery(db *DB, query *Query) ([]DataPoint, error) {
 	cubeInds, err := dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
 	if err != nil {
@@ -183,11 +211,11 @@ func (dTree *DTree) KNNQuery(db *DB, query *Query) ([]DataPoint, error) {
 	}
 	// KNN query need to gaurantee the full spatial info(or even more) is provided
 	cubeInd := cubeInds[0]
-	metaInd, err := dTree.nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
+	metaInd, err := dTree.Nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
 	fmt.Println(metaInd)
 
 	// TODO: BFS Implementation
 	var dataPoints []DataPoint
 	return dataPoints, nil
+
 }
-*/
