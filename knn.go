@@ -103,7 +103,7 @@ func PointDistance(centerP []float64, boundaryP []float64) float64 {
 }
 
 func CheckCachedCube(dTree *DTree, cachedCube []int, extendedData []float64) int {
-	for i, cubeInd := range cachedCube {
+	for _, cubeInd := range cachedCube {
 		if err := dTree.Nodes[cubeInd].checkRangeByVal(nil, extendedData); err == nil {
 			// nil err means the data is within range
 			return cubeInd
@@ -112,7 +112,7 @@ func CheckCachedCube(dTree *DTree, cachedCube []int, extendedData []float64) int
 	return -1
 }
 
-func (worker *Worker) KNNQuery(db *DB, query *Query) ([]DataPoint, error) {
+func (worker *Worker) KNNQuery(query *Query) ([]DataPoint, error) {
 	centerData, err := query.ToDimFloatVal(worker.dTree)
 	if err != nil {
 		return nil, err
@@ -169,7 +169,7 @@ func (worker *Worker) KNNQuery(db *DB, query *Query) ([]DataPoint, error) {
 			metaIndList := make([]int, 1)
 			metaIndList[0] = currMetaInd
 			//Perform readBatch to force using cache, since ReadSingle doesn't cache metaCube
-			dataPoints := db.ReadBatch(cubeInd, metaIndList)
+			dataPoints := worker.db.ReadBatch(cubeInd, metaIndList)
 			for _, dp := range dataPoints {
 				knnDp := new(KNNPoint)
 				knnDp.dPoint = &dp
@@ -239,7 +239,7 @@ func (worker *Worker) KNNQuery(db *DB, query *Query) ([]DataPoint, error) {
 		} else {
 			currentBoundDistance = botBPoint.distance
 		}
-		extendedPoint := PointExtension(centerData, botBPoint.vals)
+		extendedData = PointExtension(centerData, botBPoint.vals)
 
 	}
 

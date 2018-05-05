@@ -102,8 +102,7 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 	case "Query":
 		//TODO:: parse query and execute it
 		q := UnMarshalQuery(msg.MsgBytes)
-		dataPoints := new([]DataPoint)
-		dataPoints, err = w.executeQuery(q)
+		dataPoints, err := w.executeQuery(q)
 		if err != nil {
 			log.Println("No results found")
 			b, _ := json.Marshal(Message{Type: "Error"})
@@ -111,7 +110,7 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 			w.send(w.clientInfo.address.String(), b)
 		}
 		//Send query back to client
-		b := MarshalDataPoints(*dataPoints)
+		b := MarshalDataPoints(dataPoints)
 		res, _ := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
 		log.Println("Sending results back to client..")
 		w.send(w.clientInfo.address.String(), res)
@@ -161,14 +160,18 @@ func (w *Worker) ClientListener() {
 	}
 }
 
-func (w *Worker) executeQuery(q *Query) (dp *[]DataPoint, err error) {
-	return new([]DataPoint), nil
-
+func (w *Worker) executeQuery(q *Query) (dp []DataPoint, err error) {
+	switch q.QueryType {
+	case 0:
+		dp, _, err = w.EqualityQuery(q)
+	case 1:
+	case 2:
+	}
+	return
 }
 
-//EqualityQuery ...
-func (w *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
-	cubeInds, err := w.dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
+func (worker *Worker) EqualityQuery(query *Query) ([]DataPoint, int, error) {
+	cubeInds, err := worker.dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -176,7 +179,7 @@ func (w *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
 
 	var metaInds []int
 	for _, cubeInd := range cubeInds {
-		metaInd, err := w.dTree.Nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
+		metaInd, err := worker.dTree.Nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
 		if err != nil {
 			return nil, 0, err
 		} else {
@@ -188,7 +191,7 @@ func (w *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
 	var conflictNum = 0
 	for i, cubeInd := range cubeInds {
 
-		dPoints := db.ReadSingle(cubeInd, metaInds[i])
+		dPoints := worker.db.ReadSingle(cubeInd, metaInds[i])
 		//fmt.Println(fmt.Sprintf("CubeInd: %d, MetaInd %d", cubeInd, metaInds[i]))
 		//fmt.Println(dPoints)
 		for _, dp := range dPoints {
@@ -202,19 +205,18 @@ func (w *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
 	return dataPoints, conflictNum, nil
 }
 
-func (w *Worker) rangeQuery(db *DB, query *Query) ([]DataPoint, int, error) {
-	//cubeInds, err := w.dTree.RangeSearch(query.QueryDims, query.QueryDimVals)
-	cubeInds := []int{1, 0}
-	// if err != nil {
-	// 	return nil, 0, err
-	// }
+func (worker *Worker) RangeQuery(query *Query) ([]DataPoint, int, error) {
+	cubeInds, err := worker.dTree.RangeSearch(query.QueryDims, query.QueryDimVals, query.QueryDimOpts)
+	if err != nil {
+		return nil, 0, err
+	}
 	//fmt.Println(cubeInds)
 
 	var dataPoints []DataPoint
 	totalDrawnNum := int(0)
 	for _, cubeInd := range cubeInds {
 
-		dPoints := db.ReadAll(cubeInd)
+		dPoints := worker.db.ReadAll(cubeInd)
 		//fmt.Println(fmt.Sprintf("CubeInd: %d, MetaInd %d", cubeInd, metaInds[i]))
 		//fmt.Println(dPoints)
 		for _, dp := range dPoints {

@@ -94,12 +94,14 @@ func Test(path string) {
 		cubeind := batch.CubeId
 		db.ReadAll(cubeind)
 	}
+	worker.db = db
+
 	elapsed := time.Since(start)
 	log.Printf("Time to load all data: &s\n", elapsed)
 
 	totalConflictNum := int(0)
 	for i, q := range qs {
-		dataPoints, conflictNum, err := worker.EqualityQuery(db, q)
+		dataPoints, conflictNum, err := worker.EqualityQuery(q)
 		totalConflictNum += conflictNum
 		if err != nil {
 			panic(err)

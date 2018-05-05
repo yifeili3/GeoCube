@@ -70,15 +70,15 @@ func (node *DTreeNode) initTreeNode(Mins []float64, Maxs []float64, Dims []uint,
 // Check the query values are in the min max range
 // Need to by filtered out unrelated dim beforehand
 func (node *DTreeNode) checkRangeByVal(queryDims []uint, queryDimVals []float64) error {
-	if queryDims == nil{
+	if queryDims == nil {
 		// Then assume the vals are aligned with DTreeNode
-		for i,v := range queryDimVals{
-			if v < node.Mins[j] {
-				err := errors.New(fmt.Sprintf("Data has value %f, exceeds minimum %f", v, node.Mins[j]))
+		for i, v := range queryDimVals {
+			if v < node.Mins[i] {
+				err := errors.New(fmt.Sprintf("Data has value %f, exceeds minimum %f", v, node.Mins[i]))
 				fmt.Println(err)
 				return err
-			} else if v > node.Maxs[j] {
-				err := errors.New(fmt.Sprintf("Data has value %f, exceeds maximun %f", v, node.Maxs[j]))
+			} else if v > node.Maxs[i] {
+				err := errors.New(fmt.Sprintf("Data has value %f, exceeds maximun %f", v, node.Maxs[i]))
 				fmt.Println(err)
 				return err
 			}
@@ -225,13 +225,13 @@ func (node *DTreeNode) Corners(metaInd int) ([][]float64, error) {
 		/*
 			Return the corners of the specified cubecell
 		*/
-		dimIndices, err := MetaInd2GridInd(metaInd)
+		dimIndices, err := node.MetaInd2GridInd(metaInd)
 		if err != nil {
 			return nil, err
 		}
 		vals := make([]float64, 2)
-		for i, m := range nodes.Mins {
-			vals[i] = m + float64(dimIndices[i])*nodes.CellVals[i]
+		for i, m := range node.Mins {
+			vals[i] = m + float64(dimIndices[i])*node.CellVals[i]
 		}
 		for i := range corners {
 			corners[i] = make([]float64, len(node.Dims))
@@ -240,7 +240,7 @@ func (node *DTreeNode) Corners(metaInd int) ([][]float64, error) {
 				if j%2 == 0 { //min corner of that dim
 					corners[i][k] = vals[k]
 				} else { //max corner of that dim
-					corners[i][k] = vals[k] + nodes.CellVals[k]
+					corners[i][k] = vals[k] + node.CellVals[k]
 				}
 				j /= 2
 			}
@@ -261,19 +261,19 @@ func (node *DTreeNode) MetaInd2GridInd(metaInd int) ([]int, error) {
 	}
 	//Hard Code for 2D
 	highDimIndices := make([]int, 2)
-	highDimIndices[0] = metaInd / node.DCaps[0]
-	highDimIndices[1] = metaInd % node.DCaps[0]
+	highDimIndices[0] = metaInd / int(node.DCaps[0])
+	highDimIndices[1] = metaInd % int(node.DCaps[0])
 	return highDimIndices, nil
 }
 
 func (node *DTreeNode) GetRoughMiddlePoint(metaInd int) ([]float64, error) {
-	dimIndices, err := MetaInd2GridInd(metaInd)
+	dimIndices, err := node.MetaInd2GridInd(metaInd)
 	if err != nil {
 		return nil, err
 	}
 	vals := make([]float64, 2)
-	for i, m := range nodes.Mins {
-		vals[i] = m + (float64(dimIndices[i])+0.5)*nodes.CellVals[i]
+	for i, m := range node.Mins {
+		vals[i] = m + (float64(dimIndices[i])+0.5)*node.CellVals[i]
 	}
 	return vals, nil
 }
@@ -296,24 +296,24 @@ func (node *DTreeNode) BoundaryConstrain(dataDimVals []float64, metaInd int) ([]
 			} else {
 				constrainPoints[i][dim] = node.Maxs[dim]
 			}
-			for j,v := range constrainPoints[i]{
-				if v >= node.Mins[j] && v <= node.Maxs[j]{
-					outputPoints =append(outputPoints, constrainPoints[i])
+			for j, v := range constrainPoints[i] {
+				if v >= node.Mins[j] && v <= node.Maxs[j] {
+					outputPoints = append(outputPoints, constrainPoints[i])
 				}
 			}
 		}
 
 	} else {
 		//Return the boundary values in the specified cubecell
-		dimIndices, err := MetaInd2GridInd(metaInd)
+		dimIndices, err := node.MetaInd2GridInd(metaInd)
 		if err != nil {
 			return nil, err
 		}
-		vals := make([]float64, len(nodes.Mins))
-		for i, m := range nodes.Mins {
-			vals[i] = m + float64(dimIndices[i])*nodes.CellVals[i]
+		vals := make([]float64, len(node.Mins))
+		for i, m := range node.Mins {
+			vals[i] = m + float64(dimIndices[i])*node.CellVals[i]
 		}
-		for i,_:= range constrainPoints {
+		for i, _ := range constrainPoints {
 			constrainPoints[i] = make([]float64, len(node.Dims))
 			copy(constrainPoints[i], dataDimVals)
 			dim := i / 2
@@ -324,12 +324,12 @@ func (node *DTreeNode) BoundaryConstrain(dataDimVals []float64, metaInd int) ([]
 			}
 			// CheckRange and remove out of range points(yes, points are either on the boundary
 			// or out of boundary)
-			for j,v := range constrainPoints[i]{
-				if v >= vals[j] && v <= (vals[j] + node.CellVals[dim]){
-					outputPoints =append(outputPoints, constrainPoints[i])
+			for j, v := range constrainPoints[i] {
+				if v >= vals[j] && v <= (vals[j]+node.CellVals[dim]) {
+					outputPoints = append(outputPoints, constrainPoints[i])
 				}
 			}
-		}		
+		}
 	}
 	return outputPoints, nil
 }
@@ -625,25 +625,27 @@ func (dTree *DTree) UpdateTree(points []DataPoint) error {
 func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([]int, error) {
 	//remove dimensions not used in tree spliting
 	if queryDims == nil {
-		if err := dTree.Nodes[0].checkRangeByVal(dTree.Dims, qDimVals); err != nil {
+		if err := dTree.Nodes[0].checkRangeByVal(dTree.Dims, queryDimVals); err != nil {
 			return []int{-1}, err
 		}
 
-		dimMap := map[uint]uint
-		for i,d := range dTree.Dims{
+		dimMap := make(map[uint]int)
+		for i, d := range dTree.Dims {
 			dimMap[d] = i
 		}
 		currNodeInd := uint(0)
 
 		for dTree.Nodes[currNodeInd].IsLeaf == false {
-			v := queryDimVals[dimMap[d]]
+			v := queryDimVals[dimMap[dTree.Nodes[currNodeInd].SplitDim]]
 			if v < dTree.Nodes[currNodeInd].SplitVal {
 				currNodeInd = dTree.Nodes[currNodeInd].LInd
 			} else {
 				currNodeInd = dTree.Nodes[currNodeInd].RInd
 			}
 		}
-		var finalNodeList = [1]int{int(currNodeInd)}
+
+		//finalNodeList := make([]int, 1)
+		finalNodeList := []int{int(currNodeInd)}
 		return finalNodeList, nil
 	}
 
@@ -685,7 +687,7 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 		}
 	}
 
-	var finalNodeList = [1]int{int(currNodeInd)}
+	finalNodeList := []int{int(currNodeInd)}
 	return finalNodeList, nil
 }
 
@@ -726,24 +728,24 @@ func (dTree *DTree) RangeSearch(queryDims []uint, queryDimVals []float64, queryD
 	}
 
 	finalNodeList := make([]int, 0)
-	//currList := [0]int{}
-	//nextList := [1]int{0}
-	// // find the list of related leaf nodes
-	//TODO:****************************Compile Error
-	// for len(nextList) > 0 {
-	// 	currList = nextList
-	// 	nextList := make([]int, 0)
-	// 	for _, nodeInd := range currList {
-	// 		if dTree.Nodes[nodeInd].RangeCheck(qDimVals, qDimOpts, qDict) {
-	// 			if dTree.Nodes[nodeInd].IsLeaf {
-	// 				finalNodeList = append(finalNodeList, nodeInd)
-	// 			} else {
-	// 				nextList = append(nextList, dTree.Nodes[nodeInd].LInd)
-	// 				nextList = append(nextList, dTree.Nodes[nodeInd].RInd)
-	// 			}
-	// 		}
-	// 	}
-	// }
+	currList := []int{}
+	nextList := make([]int, 0)
+	nextList[0] = 0
+	// find the list of related leaf nodes
+	for len(nextList) > 0 {
+		currList = nextList
+		nextList := make([]int, 0)
+		for _, nodeInd := range currList {
+			if dTree.Nodes[nodeInd].RangeCheck(qDimVals, qDimOpts, qDict) {
+				if dTree.Nodes[nodeInd].IsLeaf {
+					finalNodeList = append(finalNodeList, nodeInd)
+				} else {
+					nextList = append(nextList, int(dTree.Nodes[nodeInd].LInd))
+					nextList = append(nextList, int(dTree.Nodes[nodeInd].RInd))
+				}
+			}
+		}
+	}
 
 	return finalNodeList, nil
 }
