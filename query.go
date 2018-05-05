@@ -1,8 +1,13 @@
 package main
 
-import "math"
+import (
+	"errors"
+	"fmt"
+	"math"
+)
 
 type Query struct {
+	//QueryType = 0, equal, 1, range, 2, range
 	QueryType int
 	// QueryDims can be duplicated, so that both > < can be
 	// supported at the same time
@@ -10,7 +15,7 @@ type Query struct {
 	QueryDimVals []float64
 	// Query Operations in each dim: 0 =; 1 >; -1 <, etc
 	QueryDimOpts []int
-	// Value K is QueryType = 1, KNN
+	// Value K is QueryType = 2, KNN
 	K int
 	// Later Usage
 	Client string
@@ -56,4 +61,27 @@ func (query *Query) DistanceToCenter(dPoint *DataPoint) float64 {
 		distance += math.Pow(diff, 2)
 	}
 	return math.Sqrt(distance)
+}
+
+// Convert the query to a float array storing the knn center info
+func (query *Query) ToDimFloatVal(dTree *DTree) ([]float64, error) {
+	if query.K < 0 {
+		err := errors.New(fmt.Sprintf("Query is not KNN, but tries to convert fake data"))
+		fmt.Println(err)
+		return nil, err
+	}
+
+	// For safety in future, need to do dimension check
+
+	var qDict map[uint]float64
+	qDict = make(map[uint]float64, 4)
+	for i, d := range query.QueryDims {
+		qDict[d] = query.QueryDimVals[i]
+	}
+
+	centerData := make([]float64, len(dTree.Dims))
+	for i, d := range dTree.Dims {
+		centerData[i] = qDict[d]
+	}
+	return centerData, nil
 }
