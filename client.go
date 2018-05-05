@@ -107,6 +107,7 @@ func (cl *Client) Run(dataPath string) (err error) {
 	for i := range cl.leafMap {
 		cl.leafMap[i] = cl.treeMetadata.ToDataBatch()
 	}
+
 	err = cl.Sync()
 
 	var qs []*Query
@@ -119,15 +120,15 @@ func (cl *Client) Run(dataPath string) (err error) {
 	start := time.Now()
 	cl.Execute(qs)
 	elapsed := time.Since(start)
-	log.Printf("Total time used in executing %d queries: %fns \n ", len(qs), elapsed.Nanoseconds)
+	log.Printf("Total time used in executing %d queries: %dns \n ", len(qs), elapsed.Nanoseconds)
 	//end benchmark
 	return err
 }
 
 // Execute List of queries and calculate the time duration of receiving all results
 func (cl *Client) Execute(qs []*Query) (err error) {
-	for _, q := range qs {
-		err := cl.executeQuery(q)
+	for i, q := range qs {
+		err := cl.executeQuery(q, i+2)
 		if err != nil {
 			log.Println(err)
 		}
@@ -159,32 +160,27 @@ func (cl *Client) Sync() (err error) {
 		}
 		log.Println("Tree Sent...")
 
-		for _, batches := range cl.leafMap {
-			if len(batches) > 0 {
-				for _, batch := range batches {
-					//b := MarshalDBtoByte(&batch)
-					b, _ := json.Marshal(&batch)
-					dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
-					//log.Println(len(dataBatchMsg))
-					conn, err = net.Dial("tcp", w.address.String())
-					_, err = conn.Write(dataBatchMsg)
-					conn.Close()
-					if err != nil {
-						log.Printf("Cannot send databatches to worker %d \n", w.id)
-					}
-				}
+		for _, batch := range cl.leafMap[w.id] {
+			//b := MarshalDBtoByte(&batch)
+			b, _ := json.Marshal(&batch)
+			dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
+			conn, err = net.Dial("tcp", w.address.String())
+			_, err = conn.Write(dataBatchMsg)
+			conn.Close()
+			if err != nil {
+				log.Printf("Cannot send databatches to worker %d \n", w.id)
 			}
 		}
+
 		log.Println("Leaf Map Sent...")
 	}
 	return nil
 }
 
 //TODO:
-func (cl *Client) executeQuery(q *Query) (err error) {
+func (cl *Client) executeQuery(q *Query, workerid int) (err error) {
 	//TODO: TreeSearch to find which worker to route query to
 	//workerid := cl.FindWorker(q)
-	workerid := 2
 	//send query to worker
 	query := MarshalQuery(q)
 	qmsg, _ := json.Marshal(Message{Type: "Query", MsgBytes: query})

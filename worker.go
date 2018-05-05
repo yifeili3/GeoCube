@@ -105,7 +105,7 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 		}
 
 		w.db.Feed(&databatch)
-		log.Println("Finish updating tree")
+		//log.Println("Finish updating tree")
 	case "Query":
 		//TODO:: parse query and execute it
 		q := UnMarshalQuery(msg.MsgBytes)
