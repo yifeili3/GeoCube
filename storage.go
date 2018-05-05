@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math"
 	"math/rand"
-	"net"
 	"os"
 	"path"
 	"strconv"
@@ -18,7 +16,7 @@ import (
 const (
 	dbRootPath     = "./db/"
 	dataArraySize  = 0 // Jade: should this dataArraySize to be initialized as this much?
-	LRUSize        = 5000
+	cacheSize      = 5000
 	batchReadThres = 20
 	tcpPort        = 1003
 )
@@ -26,7 +24,6 @@ const (
 type DB struct {
 	CubeMetaMap map[int]string    //  key: treeNodeidx Value: metafilepath
 	Cube        map[int]*MetaCube // fixed size
-	TCPListener net.Listener
 }
 
 type CubeCell struct {
@@ -65,9 +62,7 @@ func InitDB() (*DB, error) {
 	db := new(DB)
 	db.CubeMetaMap = make(map[int]string)
 	db.Cube = make(map[int]*MetaCube)
-	l, err = net.Listen("tcp", ":"+strconv.Itoa(tcpPort))
-	check(err)
-	db.TCPListener = l
+
 	/*
 		dirs, err := ioutil.ReadDir(dbRootPath)
 		if err != nil {
@@ -93,28 +88,12 @@ func InitDB() (*DB, error) {
 
 }
 
-func (db *DB) DatabaseTCPListener() {
-	for {
-		c, err := db.TCPListener.Accept()
-		if err != nil {
-			log.Println(err)
-		}
-		go db.HandleTCPConnection(c)
-	}
-}
-
-func (db *DB) HandleTCPConnection(c net.Conn) {
-	defer c.Close()
-	// handle two conditions: 1. send data request 2. query request
-	b := ioutil.ReadAll(conn)
-}
-
 // shuffleCube guarantees the cubeIndex Cube is in memory
 func (db *DB) shuffleCube(cubeIndex int) {
 	if _, exists := db.Cube[cubeIndex]; exists {
 		return
 	} else {
-		if len(db.Cube) < LRUSize {
+		if len(db.Cube) < cacheSize {
 			db.Cube[cubeIndex], _ = loadMetaFromDisk(cubeIndex)
 		} else {
 			// find a randomized map entity, shuffle it with cubeIndex
@@ -294,7 +273,7 @@ func (db *DB) CreateMetaCube(cubeId int, cubeSize int, dims []uint, maxs []float
 	// TODO: Change to sync.pool?
 	// free last MetaCube used
 	// TODO: LRU => current size 1, change randomize replace to be LRU style
-	if len(db.Cube) < LRUSize {
+	if len(db.Cube) < cacheSize {
 		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{CubeIndex: cubeId, Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
 	} else {
 		// randomly choose an index from current CubeMataMap and then replace it.
@@ -342,8 +321,8 @@ func (db *DB) Feed(batch *DataBatch) error {
 			db.feedBatchToCube(batch.dPoints, batch.CubeId)
 		} else {
 			// load Cube File from disk
-			// if length is less than LRUSize, just append new
-			if len(db.Cube) < LRUSize {
+			// if length is less than cacheSize, just append new
+			if len(db.Cube) < cacheSize {
 				db.Cube[batch.CubeId], _ = loadCubeFromDisk(batch.CubeId)
 			} else {
 				db.shuffleCube(batch.CubeId)

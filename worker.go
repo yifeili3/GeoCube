@@ -4,16 +4,18 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
-	"io/ioutil"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"strconv"
 )
 
 const (
-	tcpClientListenerPort = 9008
-	tcpPeerListenerPort   = 7008
+	tcpWorkerListenerPort = 9008
+	tcpClientListenerPort = 7008
 )
 
 type peerInfo struct {
@@ -25,9 +27,9 @@ type peerInfo struct {
 type Worker struct {
 	id             int
 	dTree          *DTree
-	peerList       []peerInfo
+	peerList       map[int]peerInfo
 	clientListener net.Listener
-	peerListener   net.Listener
+	clientInfo     peerInfo
 	db             *DB
 }
 
@@ -35,11 +37,10 @@ type Worker struct {
 func InitWorker() (w *Worker, err error) {
 	log.Println("Start worker...")
 
-	clientConn, err := net.Listen("tcp", ":"+strconv.Itoa(tcpClientListenerPort))
+	clientConn, err := net.Listen("tcp", ":"+strconv.Itoa(tcpWorkerListenerPort))
 	if err != nil {
 		log.Println(err)
 	}
-	peerConn, err := net.Listen("tcp", ":"+strconv.Itoa(tcpPeerListenerPort))
 	if err != nil {
 		log.Println(err)
 	}
@@ -56,134 +57,117 @@ func InitWorker() (w *Worker, err error) {
 	}
 
 	w = &Worker{
-		id:             util.GetID(idip),
-		peerList:       make([]peerInfo, 13),
+		id:             GetID(idip),
+		peerList:       make(map[int]peerInfo, 13),
 		clientListener: clientConn,
-		peerListener:   peerConn,
 		db:             tempdb,
+		clientInfo:     peerInfo{id: 1, address: net.TCPAddr{IP: net.ParseIP(idip[1]), Port: tcpClientListenerPort}},
 	}
 
-	for i := 1; i < 14; i++ {
-		if i != w.id {
+	for i := 0; i < 14; i++ {
+		if i != w.id-1 {
 			w.peerList[i] = peerInfo{
-				id:      i,
-				address: net.TCPAddr{IP: net.ParseIP(idip[i]), Port: tcpPeerListenerPort},
+				id:      i + 1,
+				address: net.TCPAddr{IP: net.ParseIP(idip[i+1]), Port: tcpWorkerListenerPort},
 			}
 		}
 	}
+	log.Println("Done initializing...")
 	return w, err
 
 }
 
 //HandleClientRequests ..
 func (w *Worker) HandleClientRequests(client net.Conn) {
-	b, err := ioutil.ReadAll(client)
+	log.Println("Start handling request...")
+	var buf bytes.Buffer
+	_, err := io.Copy(&buf, client)
 	if err != nil {
-		log.Println("unable to read from coordinator")
+		fmt.Println("Error copying from connection!")
 	}
 
 	msg := new(Message)
-	if b != nil {
-		err = json.Unmarshal(b, &msg)
-		if err != nil {
-			log.Println("Error Parse message:", err)
-		}
+	err = json.Unmarshal(buf.Bytes(), &msg)
+	if err != nil {
+		log.Println("Error Parse message:", err)
 	}
+
+	log.Printf("Incoming message %s\n", msg.Type)
 	switch msg.Type {
 	case "Tree":
 		w.dTree = UnMarshalTree(msg.MsgBytes)
+		log.Println("Finish updating tree")
 	case "DataBatch":
 		w.db.Feed(UnmarshalBytetoDB(msg.MsgBytes))
 	case "Query":
 		//TODO:: parse query and execute it
 		q := UnMarshalQuery(msg.MsgBytes)
+		dataPoints := new([]DataPoint)
 		dataPoints, err = w.executeQuery(q)
 		if err != nil {
 			log.Println("No results found")
-			b := json.Marshal(Message{Type: "Error"})
-			w.send(client, b)
+			b, _ := json.Marshal(Message{Type: "Error"})
+
+			w.send(w.clientInfo.address.String(), b)
 		}
 		//Send query back to client
-		b := MarshalDataPoints(dataPoints)
-		w.send(client, b)
-	default:
-		log.Println("Unrecognized message")
-	}
-
-}
-
-func (w *Worker) send(conn net.Conn, msg []byte) {
-	conn.Write(msg)
-	// Not sure:
-	//conn.Close()
-}
-
-//ClientListener ...
-func (w *Worker) ClientListener() chan net.Conn {
-	ch := make(chan net.Conn)
-	go func() {
-		for {
-			client, err := w.clientListener.Accept()
-			if err != nil {
-				log.Println("can not accept:" + err.string())
-				continue
-			}
-			ch <- client
-		}
-	}()
-	return ch
-}
-
-//PeerListener ...
-func (w *Worker) PeerListener() chan net.Conn {
-	ch := make(chan net.Conn)
-	go func() {
-		for {
-			peer, err := w.peerListener.Accept()
-			if err != nil {
-				log.Println("can not accept:" + err.string())
-				continue
-			}
-			ch <- peer
-		}
-	}()
-	return ch
-}
-
-//HandlePeerResults  ...
-func (w *Worker) HandlePeerResults(peer net.Conn) {
-	b, err := ioutil.ReadAll(peer)
-	msg := new(Message)
-	if b != nil {
-		err = json.Unmarshal(b, &msg)
-		if err != nil {
-			log.Println("Error Parse message:", err)
-		}
-	}
-	switch msg.Type {
+		b := MarshalDataPoints(*dataPoints)
+		res, _ := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
+		log.Println("Sending results back to client..")
+		w.send(w.clientInfo.address.String(), res)
 	case "PeerRequest":
-		cubeIdx := msg.CubeIndex
-		metaIdx := msg.MetaIndex
-		//Read cube from db
-		dPoints := w.db.ReadSingle(cubeIdx, metaIdx)
-		b := MarshalDataPoints(dPoints)
-		w.send(peer, b)
+		// cubeIdx := msg.CubeIndex
+		// metaIdx := msg.MetaIndex
+		// //Read cube from db
+		// dPoints := w.db.ReadSingle(cubeIdx, metaIdx)
+		// b := MarshalDataPoints(dPoints)
+		// w.send(peer, b)
 	case "DataPoints":
 		// use a channel here to pass dataPoints to RangeQuery
 		dp := new([]DataPoint)
-		dp = UnmarshalDataPoints(msg.MsgBytes)
+		*dp = UnmarshalDataPoints(msg.MsgBytes)
 		// dpChan <-dp
+	default:
+		log.Println("Unrecognized message")
 	}
-
 }
 
-func (w *Worker) executeQuery(q *Query) (dp []DataPoint, err error) {
+func (w *Worker) send(dest string, msg []byte) {
 
+	conn, err := net.Dial("tcp", dest)
+	defer conn.Close()
+	if err != nil {
+		log.Printf("Cannot connect")
+		return
+	}
+	_, err = conn.Write(msg)
+	if err != nil {
+		log.Printf("Cannot send query to worker")
+	}
+}
+
+//ClientListener ...
+func (w *Worker) ClientListener() {
+	accept := 0
+	for {
+		log.Println("Accepting Requests >>>>")
+		client, err := w.clientListener.Accept()
+		if err != nil {
+			log.Println("can not accept:", err)
+		}
+		accept++
+		log.Printf("Accepted: %d\n", accept)
+		go w.HandleClientRequests(client)
+	}
+}
+
+func (w *Worker) executeQuery(q *Query) (dp *[]DataPoint, err error) {
+	return new([]DataPoint), nil
 }
 
 //EqualityQuery ...
 func (w *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
-	cubeInds, err := worker.dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
+	cubeInds, err := w.dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -191,7 +175,7 @@ func (w *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
 
 	var metaInds []int
 	for _, cubeInd := range cubeInds {
-		metaInd, err := worker.dTree.Nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
+		metaInd, err := w.dTree.Nodes[cubeInd].MapIndByVal(query.QueryDims, query.QueryDimVals)
 		if err != nil {
 			return nil, 0, err
 		} else {
@@ -218,15 +202,16 @@ func (w *Worker) EqualityQuery(db *DB, query *Query) ([]DataPoint, int, error) {
 }
 
 func (w *Worker) rangeQuery(db *DB, query *Query) ([]DataPoint, int, error) {
-	cubeInds, err := worker.dTree.RangeSearch(query.QueryDims, query.QueryDimVals)
-	if err != nil {
-		return nil, 0, err
-	}
+	//cubeInds, err := w.dTree.RangeSearch(query.QueryDims, query.QueryDimVals)
+	cubeInds := []int{1, 0}
+	// if err != nil {
+	// 	return nil, 0, err
+	// }
 	//fmt.Println(cubeInds)
 
 	var dataPoints []DataPoint
 	totalDrawnNum := int(0)
-	for i, cubeInd := range cubeInds {
+	for _, cubeInd := range cubeInds {
 
 		dPoints := db.ReadAll(cubeInd)
 		//fmt.Println(fmt.Sprintf("CubeInd: %d, MetaInd %d", cubeInd, metaInds[i]))

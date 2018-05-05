@@ -228,7 +228,7 @@ func (node *DTreeNode) RangeCheck(queryDimVals []float64, queryDimOpts []int, qD
 		}
 		for _, qInd := range qDict[dim] {
 			if queryDimOpts[qInd] == 0 {
-				if queryDimVals[qInd] < node.Mins[dim] || queryDimVals[qInd] > node.Max[dim] {
+				if queryDimVals[qInd] < node.Mins[dim] || queryDimVals[qInd] > node.Maxs[dim] {
 					return false
 				}
 			} else if queryDimOpts[qInd] < 0 && queryDimVals[qInd] < node.Mins[dim] {
@@ -590,23 +590,24 @@ func (dTree *DTree) RangeSearch(queryDims []uint, queryDimVals []float64, queryD
 	}
 
 	finalNodeList := make([]int, 0)
-	currList := [0]int{}
-	nextList := [1]int{0}
-	// find the list of related leaf nodes
-	for len(nextList) > 0 {
-		currList = nextList
-		nextList := make([]int, 0)
-		for _, nodeInd := range currList {
-			if dTree.Nodes[nodeInd].RangeCheck(qDimVals, qDimOpts, qDict) {
-				if dTree.Nodes[nodeInd].IsLeaf {
-					finalNodeList = append(finalNodeList, nodeInd)
-				} else {
-					nextList = append(nextList, dTree.Nodes[nodeInd].LInd)
-					nextList = append(nextList, dTree.Nodes[nodeInd].RInd)
-				}
-			}
-		}
-	}
+	//currList := [0]int{}
+	//nextList := [1]int{0}
+	// // find the list of related leaf nodes
+	//TODO:****************************Compile Error
+	// for len(nextList) > 0 {
+	// 	currList = nextList
+	// 	nextList := make([]int, 0)
+	// 	for _, nodeInd := range currList {
+	// 		if dTree.Nodes[nodeInd].RangeCheck(qDimVals, qDimOpts, qDict) {
+	// 			if dTree.Nodes[nodeInd].IsLeaf {
+	// 				finalNodeList = append(finalNodeList, nodeInd)
+	// 			} else {
+	// 				nextList = append(nextList, dTree.Nodes[nodeInd].LInd)
+	// 				nextList = append(nextList, dTree.Nodes[nodeInd].RInd)
+	// 			}
+	// 		}
+	// 	}
+	// }
 
 	return finalNodeList, nil
 }

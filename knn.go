@@ -22,12 +22,13 @@ func (pq *PQDataPoints) Swap(i, j int) {
 	pq.distances[i], pq.distances[j] = pq.distances[j], pq.distances[i]
 }
 
+/*
 func (pq *PQDataPoints) Push(x interface{}) {
 	item := x.(*DataPoint)
 	pq.points = append(pq.points, item)
-	pq.distances = append(pq.distances, q.DistanceToCenter(item))
+	pq.distances = append(pq.distances, pq.DistanceToCenter(item))
 }
-
+*/
 func (pq *PQDataPoints) Pop() interface{} {
 	n := len(pq.points)
 	item := pq.points[n-1]
@@ -36,6 +37,7 @@ func (pq *PQDataPoints) Pop() interface{} {
 	return item
 }
 
+/*
 func (dTree *DTree) KNNQuery(db *DB, query *Query) ([]DataPoint, error) {
 	cubeInds, err := dTree.EquatlitySearch(query.QueryDims, query.QueryDimVals)
 	if err != nil {
@@ -50,3 +52,4 @@ func (dTree *DTree) KNNQuery(db *DB, query *Query) ([]DataPoint, error) {
 	return dataPoints, nil
 
 }
+*/

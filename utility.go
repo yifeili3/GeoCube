@@ -158,9 +158,9 @@ func MarshalDBtoByte(batch *DataBatch) []byte {
 
 	data := make([]byte, 0)
 
-	intSize := unsafe.Sizeof(batch.CubeId)
-	uintSize := unsafe.Sizeof(batch.Capacity) // capacity(uint) and Dims(utin[])
-	float64Size := unsafe.Sizeof(float64(0))
+	//intSize := unsafe.Sizeof(batch.CubeId)
+	//uintSize := unsafe.Sizeof(batch.Capacity) // capacity(uint) and Dims(utin[])
+	//float64Size := unsafe.Sizeof(float64(0))
 	dimLength := len(batch.Dims)
 	minsLength := len(batch.Mins)
 	maxsLength := len(batch.Maxs)
@@ -311,8 +311,8 @@ func MarshalTree(dTree *DTree) []byte {
 
 func UnMarshalTree(jsArray []byte) *DTree {
 	dTree := new(DTree)
-	if jsonArray != nil {
-		err = json.Unmarshal(jsonArray, &dTree)
+	if jsArray != nil {
+		err := json.Unmarshal(jsArray, &dTree)
 		if err != nil {
 			log.Println("Error Parse Json Tree:", err)
 		}
@@ -330,8 +330,8 @@ func MarshalQuery(query *Query) []byte {
 
 func UnMarshalQuery(jsArray []byte) *Query {
 	query := new(Query)
-	if jsonArray != nil {
-		err = json.Unmarshal(jsonArray, &query)
+	if jsArray != nil {
+		err := json.Unmarshal(jsArray, &query)
 		if err != nil {
 			log.Println("Error Parse Query:", err)
 		}
@@ -340,6 +340,7 @@ func UnMarshalQuery(jsArray []byte) *Query {
 }
 
 func MarshalDataPoints(dPoints []DataPoint) []byte {
+	log.Printf("In marshal datapoints, length is %d\n", len(dPoints))
 	dPointLength := len(dPoints)
 	data := make([]byte, 0)
 	byteData, _ := json.Marshal(dPointLength)

@@ -1,16 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net"
-	"sync"
+	"strconv"
 )
 
 const (
 	workerListernerPort = 9008
+	clientListenerPort  = 7008
 	workerNumber        = 14
 )
 
@@ -25,9 +27,11 @@ type ClientInfo struct {
 }
 
 type Client struct {
-	workerList   []WorkerInfo
-	treeMetadata *DTree
-	leafMap      map[int][]DataBatch
+	workerList     map[int]WorkerInfo
+	treeMetadata   *DTree
+	leafMap        map[int][]DataBatch
+	clientListener net.Listener
+	msgChan        chan []byte
 }
 
 //InitClient ...
@@ -51,11 +55,18 @@ func InitClient() (client *Client, err error) {
 
 	dTree := InitTree(pDims, pCaps, splitThresRatio, initMins, initMaxs)
 
+	log.Println("Initializing client structure...")
+	clientConn, _ := net.Listen("tcp", ":"+strconv.Itoa(clientListenerPort))
+
 	client = &Client{
-		workerList:   make([]WorkerInfo, workerNumber),
-		treeMetadata: dTree,
-		leafMap:      make(map[int][]DataBatch, workerNumber),
+		workerList:     make(map[int]WorkerInfo, workerNumber),
+		treeMetadata:   dTree,
+		leafMap:        make(map[int][]DataBatch, workerNumber),
+		msgChan:        make(chan []byte),
+		clientListener: clientConn,
 	}
+
+	log.Println("Fill worker info...")
 
 	//fill worker info
 	idip := map[int]string{1: "172.22.154.227", 2: "172.22.156.227", 3: "172.22.158.227",
@@ -64,15 +75,17 @@ func InitClient() (client *Client, err error) {
 		10: "172.22.154.230", 11: "172.22.156.230", 12: "172.22.158.230",
 		13: "172.22.154.231", 14: "172.22.156.231", 15: "172.22.158.231",
 	}
-	for i := 1; i <= workerNumber; i++ {
-		client.workerList[i] = WorkerInfo{
-			id:      i, // Client ID = 1, worker ID = 2 - 15
-			address: net.TCPAddr{IP: net.ParseIP(idip[i]), Port: workerListernerPort},
+	for i := 0; i < workerNumber; i++ {
+		client.workerList[i+1] = WorkerInfo{
+			id:      i + 1, // Client ID = 1-14, worker ID = 15
+			address: net.TCPAddr{IP: net.ParseIP(idip[i+1]), Port: workerListernerPort},
 		}
 		//  info of cubes that store on one worker
 		var db []DataBatch
-		client.leafMap[i] = db
+		client.leafMap[i+1] = db
 	}
+
+	log.Println("Done initializing...")
 
 	return client, err
 }
@@ -92,20 +105,21 @@ func (cl *Client) Run(dataPath string) (err error) {
 		panic(err)
 	}
 
-	fmt.Printf("Tree build finished. Total number of nodes, include non-leaf, %d\n", len(cl.treeMetadata.Nodes))
-	// TODO: (Jade) List of Databatches by tree. Also the map of which index is in which worker
-	//ToDataBatch()
+	fmt.Printf("Tree build finished. Total %d dataPoints. Total number of nodes, include non-leaf, %d\n", len(rawDataPoints), len(cl.treeMetadata.Nodes))
 
-	// TODO: (Jade) Sending out list of databatches, and the whole tree. (sync)
+	cl.leafMap[2] = cl.treeMetadata.ToDataBatch()
+
 	err = cl.Sync()
+
 	if err != nil {
 		log.Println("Can not sync..")
 	}
-	//Generate and Execute query (To be replaced by)
+
 	var qs []*Query
 	for _, dp := range rawDataPoints {
 		qs = append(qs, generateFakeQuery(&dp))
 	}
+	qs = qs[:2]
 	cl.Execute(qs)
 
 	return err
@@ -113,18 +127,12 @@ func (cl *Client) Run(dataPath string) (err error) {
 
 // Execute List of queries and calculate the time duration of receiving all results
 func (cl *Client) Execute(qs []*Query) (err error) {
-	var wg sync.WaitGroup
-	wg.Add(len(qs))
-	for i := 0; i < len(qs); i++ {
-		go func() {
-			err := cl.executeQuery(qs[i])
-			if err != nil {
-				fmt.Printf("fail: %v\n", err)
-			}
-			wg.Done()
-		}()
+	for _, q := range qs {
+		err := cl.executeQuery(q)
+		if err != nil {
+			log.Println(err)
+		}
 	}
-	wg.Wait()
 	return nil
 }
 
@@ -133,30 +141,38 @@ func (cl *Client) Sync() (err error) {
 	tree := MarshalTree(cl.treeMetadata)
 	treeMsg, _ := json.Marshal(Message{Type: "Tree", MsgBytes: tree})
 
-	for _, peer := range cl.workerList {
-		conn, err := net.Dial("tcp", peer.address.String())
+	for _, w := range cl.workerList {
+		if w.id != 2 {
+			continue
+		}
+		log.Printf("Syncing...%d\n", w.id)
+		conn, err := net.Dial("tcp", w.address.String())
 		if err != nil {
-			log.Printf("Cannot connect to worker %d \n", peer.id)
+			log.Printf("Cannot connect to worker %d \n", w.id)
 			return err
 		}
 
 		_, err = conn.Write(treeMsg)
+		conn.Close()
+
 		if err != nil {
-			log.Printf("Cannot send tree to worker %d \n", peer.id)
+			log.Printf("Cannot send tree to worker %d \n", w.id)
 		}
+		log.Println("Tree Sent...")
 
 		for _, batches := range cl.leafMap {
 			for _, batch := range batches {
 				b := MarshalDBtoByte(&batch)
 				dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
-
+				conn, err = net.Dial("tcp", w.address.String())
 				_, err = conn.Write(dataBatchMsg)
+				conn.Close()
 				if err != nil {
-					log.Printf("Cannot send databatches to worker %d \n", peer.id)
+					log.Printf("Cannot send databatches to worker %d \n", w.id)
 				}
 			}
 		}
-		conn.Close()
+		log.Println("Leaf Map Sent...")
 	}
 	return nil
 }
@@ -165,35 +181,102 @@ func (cl *Client) Sync() (err error) {
 func (cl *Client) executeQuery(q *Query) (err error) {
 	//TODO: TreeSearch to find which worker to route query to
 	//workerid := cl.FindWorker(q)
-	workerid := 1
+	workerid := 2
 	//send query to worker
+	query := MarshalQuery(q)
+	qmsg, _ := json.Marshal(Message{Type: "Query", MsgBytes: query})
 	dest := cl.workerList[workerid]
 	conn, err := net.Dial("tcp", dest.address.String())
 	if err != nil {
 		log.Printf("Cannot connect to worker %d \n", dest.id)
 		return err
 	}
-	query := MarshalQuery(q)
-	qmsg, _ := json.Marshal(Message{Type: "Query", MsgBytes: query})
 	_, err = conn.Write(qmsg)
+	defer conn.Close()
 	if err != nil {
 		log.Printf("Cannot send query to worker %d \n", dest.id)
 	}
-	// wait for results
-	b, err := ioutil.ReadAll(conn)
-	if err != nil {
-		log.Println(err)
-	}
-	//convert to DataPoints
-	dataPoints := UnmarshalDataPoints(b)
-	if len(dataPoints) == 0 {
-		log.Println("No results found")
-	}
-	//TODO: handle returned results (aggregate)
+
 	return nil
 }
 
 func generateFakeQuery(dPoint *DataPoint) *Query {
 	q1 := InitQuery(1, []uint{1, 0}, []float64{dPoint.getFloatValByDim(uint(1)), dPoint.getFloatValByDim(uint(0))}, []int{0, 0}, 5, "lala")
 	return q1
+}
+
+func (cl *Client) TCPListener() {
+	for {
+		c, err := cl.clientListener.Accept()
+		log.Println("got connection")
+		if err != nil {
+			log.Println("err")
+		}
+		go cl.HandleTCPConn(c)
+
+	}
+}
+
+/*
+func (cl *Client) HandleTCPConn(c net.Conn) {
+	defer c.Close()
+	var buf = make([]byte, 12000000)
+	count := 0
+	var n int
+	var err error
+	//log.Println("Start to read from conn")
+	for {
+		n, err = c.Read(buf[count:])
+		if n != 0 {
+			//log.Printf("Read %d byte from tcp\n", n)
+		} else {
+			//log.Println("Read finish")
+			break
+		}
+		count += n
+		if err != nil {
+			//log.Println(err)
+			//log.Println("Read finish")
+			break
+		}
+	}
+
+	msg := new(Message)
+	err = json.Unmarshal(buf[0:count], &msg)
+	if err != nil {
+		log.Println("Error Parse message:", err)
+	}
+
+	//convert to DataPoints
+	//dataPoints := UnmarshalDataPoints(msg.MsgBytes)
+	//print(dataPoints)
+
+	// if len(dataPoints) == 0 {
+	// 	log.Println("No results found")
+	// }
+
+}
+*/
+
+func (cl *Client) HandleTCPConn(c net.Conn) {
+	var buf bytes.Buffer
+	_, err := io.Copy(&buf, c)
+	if err != nil {
+		fmt.Println("Error copying from connection!")
+	}
+
+	msg := new(Message)
+	err = json.Unmarshal(buf.Bytes(), &msg)
+	if err != nil {
+		log.Println("Error Parse message:", err)
+	}
+	log.Println("Received")
+	//convert to DataPoints
+	log.Println(len(msg.MsgBytes))
+	dataPoints := UnmarshalDataPoints(msg.MsgBytes)
+
+	if len(dataPoints) == 0 {
+		log.Println("No results found")
+	}
+
 }
