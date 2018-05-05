@@ -11,14 +11,17 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
-	dbRootPath     = "./db/"
-	dataArraySize  = 0 // Jade: should this dataArraySize to be initialized as this much?
-	cacheSize      = 5000
-	batchReadThres = 20
-	tcpPort        = 1003
+	dbRootPath         = "./db/"
+	dataArraySize      = 0 // Jade: should this dataArraySize to be initialized as this much?
+	cacheSize          = 5000
+	batchReadThres     = 20
+	tcpPort            = 1003
+	randomSampleRatio  = 0.1
+	readSingleAllRatio = 0.5
 )
 
 type DB struct {
@@ -45,8 +48,10 @@ type MetaInfo struct {
 }
 
 type MetaCube struct {
-	Metainfo MetaInfo
-	DataArr  []byte
+	Metainfo    MetaInfo
+	DataArr     []byte
+	InsertTime  int64
+	AccessCount int64
 }
 
 func check(err error) {
@@ -97,13 +102,16 @@ func (db *DB) shuffleCube(cubeIndex int) {
 			db.Cube[cubeIndex], _ = loadMetaFromDisk(cubeIndex)
 		} else {
 			// find a randomized map entity, shuffle it with cubeIndex
-			randomFig := rand.Intn(len(db.Cube))
-			// get the key
-			keys := make([]int, 0)
-			for k, _ := range db.Cube {
-				keys = append(keys, k)
-			}
-			indexToReplace := keys[randomFig]
+			/*
+				randomFig := rand.Intn(len(db.Cube))
+				// get the key
+				keys := make([]int, 0)
+				for k, _ := range db.Cube {
+					keys = append(keys, k)
+				}
+				indexToReplace := keys[randomFig]
+			*/
+			indexToReplace := db.FindReplaceIndex()
 			err := db.Cube[indexToReplace].writeToDisk()
 			check(err)
 			delete(db.Cube, indexToReplace)
@@ -161,6 +169,7 @@ func (db *DB) ReadSingle(cubeIndex int, metaIndex int) []DataPoint {
 	// check if the cubeIndex is in cubemap, if not, load datacube to map
 	db.shuffleCube(cubeIndex)
 	// | offset(4bit) | header(| totalLength | FloatNum | IntNum | StringNum |) | data(float|int|string) |
+	db.Cube[cubeIndex].AccessCount++ // add one read frequency to the cube
 	cubeCell := db.Cube[cubeIndex].Metainfo.CellArr[metaIndex]
 	dataNum := cubeCell.Count
 	dPoints := make([]DataPoint, dataNum)
@@ -210,6 +219,7 @@ func (db *DB) ReadBatch(cubeIndex int, metaIndexes []int) []DataPoint {
 		db.shuffleCube(cubeIndex)
 		db.Cube[cubeIndex].loadDataFromDisk(cubeIndex)
 	}
+	// read batch does not not count for the touch count for cube(redundant in readSingle)
 	for _, metaIndex := range metaIndexes {
 		dPoints = append(dPoints, db.ReadSingle(cubeIndex, metaIndex)...)
 	}
@@ -244,13 +254,17 @@ func (db *DB) ReadAll(cubeIndex int) []DataPoint {
 		dPoints = append(dPoints, convertByteTodPoint(dArr, floatNum, intNum, stringNum))
 		startindex += totalLength
 	}
+	// add k% of total length touch count to this cube, initially k is 50%
+	db.Cube[cubeIndex].AccessCount += int64(math.Ceil(readSingleAllRatio * float64(len(dPoints))))
 	return dPoints
 }
 
+// Read ... Redundant function, plz don't use
 func (db *DB) Read() error {
 	return nil
 }
 
+// Load ... Redundant function, plz don't use
 func (db *DB) Load() error {
 	return nil
 }
@@ -261,6 +275,36 @@ func Keys(m map[int]interface{}) (keys []int) {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+// LFUCache is for calculating which index to be replaced in shuffle
+type LFUCache struct {
+	AccessCount int64
+	InsertTime  int64
+}
+
+// FindReplaceIndex find the lest frequent index from a random sampled index of cube cache
+func (db *DB) FindReplaceIndex() int {
+	// find k random
+	k := int(randomSampleRatio * cacheSize)
+	cubeToReplace := make(map[int]*LFUCache)
+	for len(cubeToReplace) < k || len(cubeToReplace) >= len(db.Cube) {
+		randNum := rand.Intn(len(db.Cube))
+		if _, exists := cubeToReplace[randNum]; !exists {
+			cubeToReplace[randNum] = &LFUCache{AccessCount: db.Cube[randNum].AccessCount, InsertTime: db.Cube[randNum].InsertTime}
+		}
+	}
+	timeNow := time.Now().Unix()
+	dropIndex := 0
+	minFrequency := math.MaxFloat64
+	for index, v := range cubeToReplace {
+		frequency := float64(v.AccessCount * 1.0 / (timeNow - v.InsertTime))
+		if minFrequency < frequency {
+			minFrequency = frequency
+			dropIndex = index
+		}
+	}
+	return dropIndex
 }
 
 // CreateMetaCube function create the cube from cubeId (index of tree node) and cubeSize (size of dimension)
@@ -274,20 +318,31 @@ func (db *DB) CreateMetaCube(cubeId int, cubeSize int, dims []uint, maxs []float
 	// free last MetaCube used
 	// TODO: LRU => current size 1, change randomize replace to be LRU style
 	if len(db.Cube) < cacheSize {
-		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{CubeIndex: cubeId, Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
+		db.Cube[cubeId] = &MetaCube{
+			Metainfo:    MetaInfo{CubeIndex: cubeId, Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins},
+			DataArr:     make([]byte, dataArraySize),
+			AccessCount: 0,
+			InsertTime:  time.Now().Unix()}
 	} else {
 		// randomly choose an index from current CubeMataMap and then replace it.
-		randomFig := rand.Intn(len(db.Cube))
-		keys := make([]int, 0)
-		for k, _ := range db.Cube {
-			keys = append(keys, k)
-		}
-		toReplaceIdx := keys[randomFig]
+		/*
+			randomFig := rand.Intn(len(db.Cube))
+			keys := make([]int, 0)
+			for k, _ := range db.Cube {
+				keys = append(keys, k)
+			}
+			toReplaceIdx := keys[randomFig]
+		*/
+		toReplaceIdx := db.FindReplaceIndex()
 		// before delete the entry, write back meta info and data to disk
 		err := db.Cube[toReplaceIdx].writeToDisk()
 		check(err)
 		delete(db.Cube, toReplaceIdx)
-		db.Cube[cubeId] = &MetaCube{Metainfo: MetaInfo{CubeIndex: cubeId, Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins}, DataArr: make([]byte, dataArraySize)}
+		db.Cube[cubeId] = &MetaCube{
+			Metainfo:    MetaInfo{CubeIndex: cubeId, Cubesize: cubeSize, CellArr: make([]CubeCell, cubeSize), GlobalOffset: 0, Dims: dims, Maxs: maxs, Mins: mins},
+			DataArr:     make([]byte, dataArraySize),
+			AccessCount: 0,
+			InsertTime:  time.Now().Unix()}
 
 	}
 	return nil
@@ -375,10 +430,13 @@ func loadMetaFromDisk(index int) (*MetaCube, error) {
 	metaPath := dbRootPath + indexString + "/" + indexString + ".meta"
 	dataByte, err := ioutil.ReadFile(metaPath)
 	err = json.Unmarshal(dataByte, &c.Metainfo)
+	c.InsertTime = time.Now().Unix()
+	c.AccessCount = 0
 	check(err)
 	return c, err
 }
 
+// loadCubeFromDisk load the whole cube include data array and meta data
 func loadCubeFromDisk(index int) (c *MetaCube, err error) {
 	c = new(MetaCube)
 	indexString := strconv.Itoa(index)
@@ -392,6 +450,8 @@ func loadCubeFromDisk(index int) (c *MetaCube, err error) {
 	metaPath := dbRootPath + indexString + "/" + indexString + ".meta"
 	dataByte, err = ioutil.ReadFile(metaPath)
 	err = json.Unmarshal(dataByte, &c.Metainfo)
+	c.InsertTime = time.Now().Unix()
+	c.AccessCount = 0
 	check(err)
 	return c, err
 }
