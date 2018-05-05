@@ -201,7 +201,7 @@ func (cl *Client) executeQuery(q *Query) (err error) {
 }
 
 func generateFakeQuery(dPoint *DataPoint) *Query {
-	q1 := InitQuery(1, []uint{1, 0}, []float64{dPoint.getFloatValByDim(uint(1)), dPoint.getFloatValByDim(uint(0))}, []int{0, 0}, 5, "lala")
+	q1 := InitQuery(0, []uint{1, 0}, []float64{dPoint.getFloatValByDim(uint(1)), dPoint.getFloatValByDim(uint(0))}, []int{0, 0}, -1, "lala")
 	return q1
 }
 
@@ -216,47 +216,6 @@ func (cl *Client) TCPListener() {
 
 	}
 }
-
-/*
-func (cl *Client) HandleTCPConn(c net.Conn) {
-	defer c.Close()
-	var buf = make([]byte, 12000000)
-	count := 0
-	var n int
-	var err error
-	//log.Println("Start to read from conn")
-	for {
-		n, err = c.Read(buf[count:])
-		if n != 0 {
-			//log.Printf("Read %d byte from tcp\n", n)
-		} else {
-			//log.Println("Read finish")
-			break
-		}
-		count += n
-		if err != nil {
-			//log.Println(err)
-			//log.Println("Read finish")
-			break
-		}
-	}
-
-	msg := new(Message)
-	err = json.Unmarshal(buf[0:count], &msg)
-	if err != nil {
-		log.Println("Error Parse message:", err)
-	}
-
-	//convert to DataPoints
-	//dataPoints := UnmarshalDataPoints(msg.MsgBytes)
-	//print(dataPoints)
-
-	// if len(dataPoints) == 0 {
-	// 	log.Println("No results found")
-	// }
-
-}
-*/
 
 func (cl *Client) HandleTCPConn(c net.Conn) {
 	var buf bytes.Buffer

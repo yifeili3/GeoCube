@@ -96,6 +96,7 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 	switch msg.Type {
 	case "Tree":
 		w.dTree = UnMarshalTree(msg.MsgBytes)
+		log.Println(w.dTree)
 		log.Println("Finish updating tree")
 	case "DataBatch":
 		w.db.Feed(UnmarshalBytetoDB(msg.MsgBytes))
@@ -175,7 +176,7 @@ func (worker *Worker) EqualityQuery(query *Query) ([]DataPoint, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	//fmt.Println(cubeInds)
+	fmt.Println(cubeInds)
 
 	var metaInds []int
 	for _, cubeInd := range cubeInds {
