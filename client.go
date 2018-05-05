@@ -166,7 +166,7 @@ func (cl *Client) Sync() (err error) {
 					//b := MarshalDBtoByte(&batch)
 					b, _ := json.Marshal(&batch)
 					dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
-					log.Println(len(dataBatchMsg))
+					//log.Println(len(dataBatchMsg))
 					conn, err = net.Dial("tcp", w.address.String())
 					_, err = conn.Write(dataBatchMsg)
 					conn.Close()
@@ -212,7 +212,7 @@ func generateFakeQuery(dPoint *DataPoint) *Query {
 func (cl *Client) TCPListener() {
 	for {
 		c, err := cl.clientListener.Accept()
-		log.Println("got connection")
+		//log.Println("got connection")
 		if err != nil {
 			log.Println("err")
 		}
@@ -233,12 +233,12 @@ func (cl *Client) HandleTCPConn(c net.Conn) {
 	if err != nil {
 		log.Println("Error Parse message:", err)
 	}
-	log.Println("Received")
-	//convert to DataPoints
-	log.Println(len(msg.MsgBytes))
-	dataPoints := UnmarshalDataPoints(msg.MsgBytes)
 
-	if len(dataPoints) == 0 {
+	//convert to DataPoints
+	var b []DataPoint
+	json.Unmarshal(msg.MsgBytes, &b)
+	log.Println(b)
+	if len(b) == 0 {
 		log.Println("No results found")
 	}
 

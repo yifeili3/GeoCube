@@ -96,13 +96,13 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 	switch msg.Type {
 	case "Tree":
 		w.dTree = UnMarshalTree(msg.MsgBytes)
-		log.Println(w.dTree)
+		//log.Println(w.dTree)
 		log.Println("Finish updating tree")
 	case "DataBatch":
 		var databatch DataBatch
 		err = json.Unmarshal(msg.MsgBytes, &databatch)
-		log.Println(len(msg.MsgBytes))
-		log.Println(len(databatch))
+		//log.Println(len(msg.MsgBytes))
+		//log.Println(len(databatch.DPoints))
 		if err != nil {
 			log.Println("Unable to unmarshal databatch")
 		}
@@ -119,9 +119,9 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 			w.send(w.clientInfo.address.String(), b)
 		}
 		//Send query back to client
-		b := MarshalDataPoints(dataPoints)
+		b, _ := json.Marshal(dataPoints)
 		res, _ := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
-		log.Println("Sending results back to client..")
+		//log.Printf("Sending results back to client.. Size:%d\n", len(b))
 		w.send(w.clientInfo.address.String(), res)
 	case "PeerRequest":
 		// cubeIdx := msg.CubeIndex
@@ -133,7 +133,7 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 	case "DataPoints":
 		// use a channel here to pass dataPoints to RangeQuery
 		dp := new([]DataPoint)
-		*dp = UnmarshalDataPoints(msg.MsgBytes)
+		json.Unmarshal(msg.MsgBytes, dp)
 		// dpChan <-dp
 	default:
 		log.Println("Unrecognized message")
