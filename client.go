@@ -160,15 +160,19 @@ func (cl *Client) Sync() (err error) {
 		}
 		log.Println("Tree Sent...")
 
-		for _, batches := range cl.leafMap {
-			for _, batch := range batches {
-				b := MarshalDBtoByte(&batch)
-				dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
-				conn, err = net.Dial("tcp", w.address.String())
-				_, err = conn.Write(dataBatchMsg)
-				conn.Close()
-				if err != nil {
-					log.Printf("Cannot send databatches to worker %d \n", w.id)
+		for k, batches := range cl.leafMap {
+			if k == 2 {
+				for _, batch := range batches {
+					//b := MarshalDBtoByte(&batch)
+					b, _ := json.Marshal(&batch)
+					dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
+					log.Println(len(dataBatchMsg))
+					conn, err = net.Dial("tcp", w.address.String())
+					_, err = conn.Write(dataBatchMsg)
+					conn.Close()
+					if err != nil {
+						log.Printf("Cannot send databatches to worker %d \n", w.id)
+					}
 				}
 			}
 		}

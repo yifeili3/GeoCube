@@ -36,7 +36,7 @@ type DataBatch struct {
 	Dims     []uint
 	Mins     []float64
 	Maxs     []float64
-	dPoints  []DataPoint
+	DPoints  []DataPoint
 }
 
 func (point *DataPoint) getFloatValByDim(d uint) float64 {
@@ -164,7 +164,7 @@ func MarshalDBtoByte(batch *DataBatch) []byte {
 	dimLength := len(batch.Dims)
 	minsLength := len(batch.Mins)
 	maxsLength := len(batch.Maxs)
-	dPointLength := len(batch.dPoints)
+	dPointLength := len(batch.DPoints)
 	// first intSize byte for cubeid
 	byteData, _ := json.Marshal(batch.CubeId)
 	data = append(data, byteData...)
@@ -197,7 +197,7 @@ func MarshalDBtoByte(batch *DataBatch) []byte {
 	data = append(data, byteData...)
 
 	// trans dPoints into byte
-	for _, dp := range batch.dPoints {
+	for _, dp := range batch.DPoints {
 		header, body := convertDPoint(dp)
 		data = append(data, header...)
 		data = append(data, body...)
@@ -248,7 +248,7 @@ func UnmarshalBytetoDB(data []byte) *DataBatch {
 	var dPointLength int
 	curData = data[offset : offset+intSize]
 	json.Unmarshal(curData, dPointLength)
-	batch.dPoints = make([]DataPoint, dPointLength)
+	batch.DPoints = make([]DataPoint, dPointLength)
 	offset += intSize
 	// trans byte into dims (uint[])
 	for i := 0; i < dimsLength; i++ {
@@ -275,7 +275,7 @@ func UnmarshalBytetoDB(data []byte) *DataBatch {
 		offset += 20
 		_, totalLength, floatNum, intNum, stringNum := getDataHeader(header)
 		dArr := data[offset : offset+uint64(totalLength)]
-		batch.dPoints[i] = convertByteTodPoint(dArr, floatNum, intNum, stringNum)
+		batch.DPoints[i] = convertByteTodPoint(dArr, floatNum, intNum, stringNum)
 		offset += uint64(totalLength)
 	}
 

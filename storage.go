@@ -309,7 +309,7 @@ func (db *DB) Feed(batch *DataBatch) error {
 			fmt.Println("Fail to create cube")
 			return err
 		}
-		db.feedBatchToCube(batch.dPoints, batch.CubeId)
+		db.feedBatchToCube(batch.DPoints, batch.CubeId)
 	} else {
 		// check if this cube is in cubeMap of db
 		if _, exists := db.Cube[batch.CubeId]; exists {
@@ -318,7 +318,7 @@ func (db *DB) Feed(batch *DataBatch) error {
 				// if there's no data arr, only metaData exists, load data from disk first
 				db.Cube[batch.CubeId].loadDataFromDisk(batch.CubeId)
 			}
-			db.feedBatchToCube(batch.dPoints, batch.CubeId)
+			db.feedBatchToCube(batch.DPoints, batch.CubeId)
 		} else {
 			// load Cube File from disk
 			// if length is less than cacheSize, just append new
@@ -337,7 +337,7 @@ func (db *DB) Feed(batch *DataBatch) error {
 				*/
 			}
 			// append new data, feed to this cube
-			db.feedBatchToCube(batch.dPoints, batch.CubeId)
+			db.feedBatchToCube(batch.DPoints, batch.CubeId)
 		}
 	}
 	//fmt.Printf("After feed, data length of cube %d is %d\n", batch.CubeId, len(db.Cube[batch.CubeId].DataArr))
