@@ -79,7 +79,7 @@ func InitWorker() (w *Worker, err error) {
 
 //HandleClientRequests ..
 func (w *Worker) HandleClientRequests(client net.Conn) {
-	log.Println("Start handling request...")
+	//log.Println("Start handling request...")
 	var buf bytes.Buffer
 	_, err := io.Copy(&buf, client)
 	if err != nil {
@@ -150,19 +150,20 @@ func (w *Worker) send(dest string, msg []byte) {
 func (w *Worker) ClientListener() {
 	accept := 0
 	for {
-		log.Println("Accepting Requests >>>>")
+		//log.Println("Accepting Requests >>>>")
 		client, err := w.clientListener.Accept()
 		if err != nil {
 			log.Println("can not accept:", err)
 		}
 		accept++
-		log.Printf("Accepted: %d\n", accept)
+		//log.Printf("Accepted: %d\n", accept)
 		go w.HandleClientRequests(client)
 	}
 }
 
 func (w *Worker) executeQuery(q *Query) (dp *[]DataPoint, err error) {
 	return new([]DataPoint), nil
+
 }
 
 //EqualityQuery ...
