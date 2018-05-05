@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"time"
 )
 
 const (
@@ -120,8 +121,13 @@ func (cl *Client) Run(dataPath string) (err error) {
 		qs = append(qs, generateFakeQuery(&dp))
 	}
 	qs = qs[:2]
-	cl.Execute(qs)
 
+	//Start benchmark
+	start := time.Now()
+	cl.Execute(qs)
+	elapsed := time.Since(start)
+	log.Printf("Total time used in executing %d queries: &s \n ", len(qs), elapsed)
+	//end benchmark
 	return err
 }
 
@@ -142,9 +148,9 @@ func (cl *Client) Sync() (err error) {
 	treeMsg, _ := json.Marshal(Message{Type: "Tree", MsgBytes: tree})
 
 	for _, w := range cl.workerList {
-		if w.id != 2 {
-			continue
-		}
+		// if w.id != 2 {
+		// 	continue
+		// }
 		log.Printf("Syncing...%d\n", w.id)
 		conn, err := net.Dial("tcp", w.address.String())
 		if err != nil {
@@ -158,25 +164,23 @@ func (cl *Client) Sync() (err error) {
 		if err != nil {
 			log.Printf("Cannot send tree to worker %d \n", w.id)
 		}
-		log.Println("Tree Sent...")
+		//log.Println("Tree Sent...")
 
-		for k, batches := range cl.leafMap {
-			if k == 2 {
-				for _, batch := range batches {
-					//b := MarshalDBtoByte(&batch)
-					b, _ := json.Marshal(&batch)
-					dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
-					//log.Println(len(dataBatchMsg))
-					conn, err = net.Dial("tcp", w.address.String())
-					_, err = conn.Write(dataBatchMsg)
-					conn.Close()
-					if err != nil {
-						log.Printf("Cannot send databatches to worker %d \n", w.id)
-					}
+		for _, batches := range cl.leafMap {
+			for _, batch := range batches {
+				//b := MarshalDBtoByte(&batch)
+				b, _ := json.Marshal(&batch)
+				dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
+				//log.Println(len(dataBatchMsg))
+				conn, err = net.Dial("tcp", w.address.String())
+				_, err = conn.Write(dataBatchMsg)
+				conn.Close()
+				if err != nil {
+					log.Printf("Cannot send databatches to worker %d \n", w.id)
 				}
 			}
 		}
-		log.Println("Leaf Map Sent...")
+		//log.Println("Leaf Map Sent...")
 	}
 	return nil
 }
@@ -230,8 +234,8 @@ func (cl *Client) HandleTCPConn(c net.Conn) {
 
 	msg := new(Message)
 	err = json.Unmarshal(buf.Bytes(), &msg)
-	if err != nil {
-		log.Println("Error Parse message:", err)
+	if msg.Type == "Error" {
+		log.Println("Error when executing query")
 	}
 
 	//convert to DataPoints

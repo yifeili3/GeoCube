@@ -72,14 +72,14 @@ func InitWorker() (w *Worker, err error) {
 			}
 		}
 	}
-	log.Println("Done initializing...")
+
 	return w, err
 
 }
 
 //HandleClientRequests ..
 func (w *Worker) HandleClientRequests(client net.Conn) {
-	//log.Println("Start handling request...")
+
 	var buf bytes.Buffer
 	_, err := io.Copy(&buf, client)
 	if err != nil {
@@ -96,18 +96,16 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 	switch msg.Type {
 	case "Tree":
 		w.dTree = UnMarshalTree(msg.MsgBytes)
-		//log.Println(w.dTree)
 		log.Println("Finish updating tree")
 	case "DataBatch":
 		var databatch DataBatch
 		err = json.Unmarshal(msg.MsgBytes, &databatch)
-		//log.Println(len(msg.MsgBytes))
-		//log.Println(len(databatch.DPoints))
 		if err != nil {
 			log.Println("Unable to unmarshal databatch")
 		}
 
 		w.db.Feed(&databatch)
+		log.Println("Finish updating tree")
 	case "Query":
 		//TODO:: parse query and execute it
 		q := UnMarshalQuery(msg.MsgBytes)
