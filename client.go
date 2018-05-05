@@ -37,7 +37,7 @@ type Client struct {
 
 //InitClient ...
 func InitClient() (client *Client, err error) {
-	log.Println("Start client...")
+	log.Println(">>>>>>>>>>>>>>Init client>>>>>>>>>>>>>>")
 	// Client only have one listener port, listening result from other workers
 	// It could send out TCP message to worker like Tree data, data batch, queries, map of treeleaf
 
@@ -86,8 +86,6 @@ func InitClient() (client *Client, err error) {
 		client.leafMap[i+1] = db
 	}
 
-	log.Println("Done initializing...")
-
 	return client, err
 }
 
@@ -96,25 +94,20 @@ func InitClient() (client *Client, err error) {
 // 3. Determine which dp should be send to which worker
 // 4. Send the whole tree, and DataBatches to workers accordingly
 func (cl *Client) Run(dataPath string) (err error) {
+	log.Println(">>>>>>>>>>>>>>Running Client>>>>>>>>>>>>>>")
 	rawDataPoints, err := ImportData(dataPath)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Start init client tree...")
+
+	//log.Println("Start init client tree...")
 	err = cl.treeMetadata.UpdateTree(rawDataPoints)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("Tree build finished. Total %d dataPoints. Total number of nodes, include non-leaf, %d\n", len(rawDataPoints), len(cl.treeMetadata.Nodes))
-
-	cl.leafMap[2] = cl.treeMetadata.ToDataBatch()
-
-	err = cl.Sync()
-
-	if err != nil {
-		log.Println("Can not sync..")
+	//log.Printf("Tree build finished. Total %d dataPoints. Total number of nodes, include non-leaf, %d\n", len(rawDataPoints), len(cl.treeMetadata.Nodes))
+	for i := range cl.leafMap {
+		cl.leafMap[i] = cl.treeMetadata.ToDataBatch()
 	}
+	err = cl.Sync()
 
 	var qs []*Query
 	for _, dp := range rawDataPoints {
@@ -126,7 +119,7 @@ func (cl *Client) Run(dataPath string) (err error) {
 	start := time.Now()
 	cl.Execute(qs)
 	elapsed := time.Since(start)
-	log.Printf("Total time used in executing %d queries: &s \n ", len(qs), elapsed)
+	log.Printf("Total time used in executing %d queries: %fns \n ", len(qs), elapsed.Nanoseconds)
 	//end benchmark
 	return err
 }
@@ -155,7 +148,7 @@ func (cl *Client) Sync() (err error) {
 		conn, err := net.Dial("tcp", w.address.String())
 		if err != nil {
 			log.Printf("Cannot connect to worker %d \n", w.id)
-			return err
+			continue
 		}
 
 		_, err = conn.Write(treeMsg)
@@ -164,23 +157,25 @@ func (cl *Client) Sync() (err error) {
 		if err != nil {
 			log.Printf("Cannot send tree to worker %d \n", w.id)
 		}
-		//log.Println("Tree Sent...")
+		log.Println("Tree Sent...")
 
 		for _, batches := range cl.leafMap {
-			for _, batch := range batches {
-				//b := MarshalDBtoByte(&batch)
-				b, _ := json.Marshal(&batch)
-				dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
-				//log.Println(len(dataBatchMsg))
-				conn, err = net.Dial("tcp", w.address.String())
-				_, err = conn.Write(dataBatchMsg)
-				conn.Close()
-				if err != nil {
-					log.Printf("Cannot send databatches to worker %d \n", w.id)
+			if len(batches) > 0 {
+				for _, batch := range batches {
+					//b := MarshalDBtoByte(&batch)
+					b, _ := json.Marshal(&batch)
+					dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
+					//log.Println(len(dataBatchMsg))
+					conn, err = net.Dial("tcp", w.address.String())
+					_, err = conn.Write(dataBatchMsg)
+					conn.Close()
+					if err != nil {
+						log.Printf("Cannot send databatches to worker %d \n", w.id)
+					}
 				}
 			}
 		}
-		//log.Println("Leaf Map Sent...")
+		log.Println("Leaf Map Sent...")
 	}
 	return nil
 }
