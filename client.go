@@ -81,9 +81,6 @@ func InitClient() (client *Client, err error) {
 			id:      i + 1, // Client ID = 1-14, worker ID = 15
 			address: net.TCPAddr{IP: net.ParseIP(idip[i+1]), Port: workerListernerPort},
 		}
-		//  info of cubes that store on one worker
-		var db []DataBatch
-		client.leafMap[i+1] = db
 	}
 
 	return client, err
@@ -104,9 +101,14 @@ func (cl *Client) Run(dataPath string) (err error) {
 	}
 
 	//log.Printf("Tree build finished. Total %d dataPoints. Total number of nodes, include non-leaf, %d\n", len(rawDataPoints), len(cl.treeMetadata.Nodes))
-	for i := range cl.leafMap {
-		cl.leafMap[i] = cl.treeMetadata.ToDataBatch()
-	}
+	cl.leafMap[2] = cl.treeMetadata.ToDataBatch()
+	// for _, batch := range cl.leafMap[2] {
+	// 	log.Println(len(batch.DPoints))
+	// }
+	cl.leafMap[3] = cl.treeMetadata.ToDataBatch()
+	// for _, batch := range cl.leafMap[3] {
+	// 	log.Println(len(batch.DPoints))
+	// }
 
 	err = cl.Sync()
 
@@ -117,6 +119,7 @@ func (cl *Client) Run(dataPath string) (err error) {
 	qs = qs[:2]
 
 	//Start benchmark
+	time.Sleep(2 * time.Second)
 	start := time.Now()
 	cl.Execute(qs)
 	elapsed := time.Since(start)
@@ -161,7 +164,6 @@ func (cl *Client) Sync() (err error) {
 		log.Println("Tree Sent...")
 
 		for _, batch := range cl.leafMap[w.id] {
-			//b := MarshalDBtoByte(&batch)
 			b, _ := json.Marshal(&batch)
 			dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
 			conn, err = net.Dial("tcp", w.address.String())
