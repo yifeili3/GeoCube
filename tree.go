@@ -70,6 +70,21 @@ func (node *DTreeNode) initTreeNode(Mins []float64, Maxs []float64, Dims []uint,
 // Check the query values are in the min max range
 // Need to by filtered out unrelated dim beforehand
 func (node *DTreeNode) checkRangeByVal(queryDims []uint, queryDimVals []float64) error {
+	if queryDims == nil{
+		// Then assume the vals are aligned with DTreeNode
+		for i,v := range queryDimVals{
+			if v < node.Mins[j] {
+				err := errors.New(fmt.Sprintf("Data has value %f, exceeds minimum %f", v, node.Mins[j]))
+				fmt.Println(err)
+				return err
+			} else if v > node.Maxs[j] {
+				err := errors.New(fmt.Sprintf("Data has value %f, exceeds maximun %f", v, node.Maxs[j]))
+				fmt.Println(err)
+				return err
+			}
+		}
+		return nil
+	}
 	for i, d := range queryDims {
 		v := queryDimVals[i]
 		checked := false
@@ -136,6 +151,15 @@ func (node *DTreeNode) MapInd(point *DataPoint) int {
 }
 
 func (node *DTreeNode) MapIndByVal(queryDims []uint, queryDimVals []float64) (int, error) {
+	ind := 0
+
+	if queryDims == nil {
+		for i, v := range queryDimVals {
+			ind *= int(node.DCaps[i])
+			ind += mapInd1d(v, node.Mins[i], node.CellVals[i])
+		}
+		return ind, nil
+	}
 
 	var qDict map[uint]float64
 	qDict = make(map[uint]float64, 4)
@@ -143,7 +167,6 @@ func (node *DTreeNode) MapIndByVal(queryDims []uint, queryDimVals []float64) (in
 		qDict[d] = queryDimVals[i]
 	}
 
-	ind := 0
 	for i, d := range node.Dims {
 		v, exists := qDict[d]
 		if !exists {
@@ -177,44 +200,138 @@ func (node *DTreeNode) FixValueOrder(queryDims []uint, queryDimVals []float64) (
 }
 
 // Given a node, return the corners of the node
-func (node *DTreeNode) Corners() ([][]float64, error) {
+func (node *DTreeNode) Corners(metaInd int) ([][]float64, error) {
 	// The first dim of corners specify each corner
 	// The second dim specifies the dimension of each value
 	// Consistent to node.Dims' order
 	corners := make([][]float64, int(math.Pow(2, float64(len(node.Dims)))))
-	for i := range corners {
-		corners[i] = make([]float64, len(node.Dims))
-		j := i
-		for k := range node.Dims {
-			if j%2 == 0 { //min corner of that dim
-				corners[i][k] = node.Mins[k]
-			} else { //max corner of that dim
-				corners[i][k] = node.Maxs[k]
+	if metaInd < 0 {
+		/*
+			Return the corners of this MetaCube
+		*/
+		for i := range corners {
+			corners[i] = make([]float64, len(node.Dims))
+			j := i
+			for k := range node.Dims {
+				if j%2 == 0 { //min corner of that dim
+					corners[i][k] = node.Mins[k]
+				} else { //max corner of that dim
+					corners[i][k] = node.Maxs[k]
+				}
+				j /= 2
 			}
-			j /= 2
+		}
+	} else {
+		/*
+			Return the corners of the specified cubecell
+		*/
+		dimIndices, err := MetaInd2GridInd(metaInd)
+		if err != nil {
+			return nil, err
+		}
+		vals := make([]float64, 2)
+		for i, m := range nodes.Mins {
+			vals[i] = m + float64(dimIndices[i])*nodes.CellVals[i]
+		}
+		for i := range corners {
+			corners[i] = make([]float64, len(node.Dims))
+			j := i
+			for k := range node.Dims {
+				if j%2 == 0 { //min corner of that dim
+					corners[i][k] = vals[k]
+				} else { //max corner of that dim
+					corners[i][k] = vals[k] + nodes.CellVals[k]
+				}
+				j /= 2
+			}
 		}
 	}
 	return corners, nil
 }
 
+/*
+Note! Only works for 2 dimension index, 3d is not recoverable for general DCaps
+REQUIRE: DCaps values to be distinguish prime number for higher dimension
+*/
+func (node *DTreeNode) MetaInd2GridInd(metaInd int) ([]int, error) {
+	if len(node.Dims) > 2 {
+		err := errors.New(fmt.Sprintf("Higher dimension %d is not recoverable unless prime dCaps", len(node.Dims)))
+		fmt.Println(err)
+		return nil, err
+	}
+	//Hard Code for 2D
+	highDimIndices := make([]int, 2)
+	highDimIndices[0] = metaInd / node.DCaps[0]
+	highDimIndices[1] = metaInd % node.DCaps[0]
+	return highDimIndices, nil
+}
+
+func (node *DTreeNode) GetRoughMiddlePoint(metaInd int) ([]float64, error) {
+	dimIndices, err := MetaInd2GridInd(metaInd)
+	if err != nil {
+		return nil, err
+	}
+	vals := make([]float64, 2)
+	for i, m := range nodes.Mins {
+		vals[i] = m + (float64(dimIndices[i])+0.5)*nodes.CellVals[i]
+	}
+	return vals, nil
+}
+
 // Given a central position, return the constrain point on the boundary line
 // datapoint is assumed to have same dim info as node
-func (node *DTreeNode) BoundaryConstrain(dataDimVals []float64) ([][]float64, error) {
+func (node *DTreeNode) BoundaryConstrain(dataDimVals []float64, metaInd int) ([][]float64, error) {
 	// The first dim of outliers specify each outlier
 	// The second dim specifies the dimension of each value
 	// Consistent to node.Dims' order
 	constrainPoints := make([][]float64, 2*len(node.Dims))
-	for i := range constrainPoints {
-		constrainPoints[i] = make([]float64, len(node.Dims))
-		copy(constrainPoints[i], dataDimVals)
-		dim := i / 2
-		if i%2 == 0 {
-			constrainPoints[i][dim] = node.Mins[dim]
-		} else {
-			constrainPoints[i][dim] = node.Maxs[dim]
+	outputPoints := make([][]float64, 0)
+	if metaInd < 0 {
+		for i := range constrainPoints {
+			constrainPoints[i] = make([]float64, len(node.Dims))
+			copy(constrainPoints[i], dataDimVals)
+			dim := i / 2
+			if i%2 == 0 {
+				constrainPoints[i][dim] = node.Mins[dim]
+			} else {
+				constrainPoints[i][dim] = node.Maxs[dim]
+			}
+			for j,v := range constrainPoints[i]{
+				if v >= node.Mins[j] && v <= node.Maxs[j]{
+					outputPoints =append(outputPoints, constrainPoints[i])
+				}
+			}
 		}
+
+	} else {
+		//Return the boundary values in the specified cubecell
+		dimIndices, err := MetaInd2GridInd(metaInd)
+		if err != nil {
+			return nil, err
+		}
+		vals := make([]float64, len(nodes.Mins))
+		for i, m := range nodes.Mins {
+			vals[i] = m + float64(dimIndices[i])*nodes.CellVals[i]
+		}
+		for i,_:= range constrainPoints {
+			constrainPoints[i] = make([]float64, len(node.Dims))
+			copy(constrainPoints[i], dataDimVals)
+			dim := i / 2
+			if i%2 == 0 {
+				constrainPoints[i][dim] = vals[dim]
+			} else {
+				constrainPoints[i][dim] = vals[dim] + node.CellVals[dim]
+			}
+			// CheckRange and remove out of range points(yes, points are either on the boundary
+			// or out of boundary)
+			for j,v := range constrainPoints[i]{
+				if v >= vals[j] && v <= (vals[j] + node.CellVals[dim]){
+					outputPoints =append(outputPoints, constrainPoints[i])
+				}
+			}
+		}		
 	}
-	return constrainPoints, nil
+	return outputPoints, nil
 }
 
 // Return False immediately if any requirement is not satisfied to save time
@@ -504,11 +621,32 @@ func (dTree *DTree) UpdateTree(points []DataPoint) error {
 }
 
 // Find the correct tree node, used in KNN query and where == query
-// Retrun the index of node
+// Retrun the index of node (list format to be consistent with RangeSearchFunction)
 func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([]int, error) {
 	//remove dimensions not used in tree spliting
-	//fmt.Println(queryDims)
-	//fmt.Println(queryDimVals)
+	if queryDims == nil {
+		if err := dTree.Nodes[0].checkRangeByVal(dTree.Dims, qDimVals); err != nil {
+			return []int{-1}, err
+		}
+
+		dimMap := map[uint]uint
+		for i,d := range dTree.Dims{
+			dimMap[d] = i
+		}
+		currNodeInd := uint(0)
+
+		for dTree.Nodes[currNodeInd].IsLeaf == false {
+			v := queryDimVals[dimMap[d]]
+			if v < dTree.Nodes[currNodeInd].SplitVal {
+				currNodeInd = dTree.Nodes[currNodeInd].LInd
+			} else {
+				currNodeInd = dTree.Nodes[currNodeInd].RInd
+			}
+		}
+		var finalNodeList = [1]int{int(currNodeInd)}
+		return finalNodeList, nil
+	}
+
 	var qDims []uint
 	var qDimVals []float64
 
@@ -536,11 +674,10 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 		return []int{0}, err
 	}
 
-	var finalNodeList []int
 	currNodeInd := uint(0)
 
 	for dTree.Nodes[currNodeInd].IsLeaf == false {
-		v := qDict[dTree.Nodes[currNodeInd].SplitDim] //Change Later
+		v := qDict[dTree.Nodes[currNodeInd].SplitDim]
 		if v < dTree.Nodes[currNodeInd].SplitVal {
 			currNodeInd = dTree.Nodes[currNodeInd].LInd
 		} else {
@@ -548,8 +685,7 @@ func (dTree *DTree) EquatlitySearch(queryDims []uint, queryDimVals []float64) ([
 		}
 	}
 
-	// TODO: Remove this line later
-	finalNodeList = append(finalNodeList, int(currNodeInd))
+	var finalNodeList = [1]int{int(currNodeInd)}
 	return finalNodeList, nil
 }
 
