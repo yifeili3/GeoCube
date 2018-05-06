@@ -72,7 +72,7 @@ func InitWorker() (w *Worker, err error) {
 		if i != w.id-1 {
 			w.peerList[i] = peerInfo{
 				id:      i + 1,
-				address: net.TCPAddr{IP: net.ParseIP(idip[i+1]), Port: tcpWorkerListenerPort},
+				address: net.TCPAddr{IP: net.ParseIP(idip[i]), Port: tcpWorkerListenerPort},
 			}
 		}
 	}
@@ -288,6 +288,8 @@ func (w *Worker) getAll(cubeInds []int) []DataPoint {
 			}
 		} else {
 			addr := w.peerList[wid].address
+			log.Println("Requesting datapoints from %d\n", wid)
+			log.Println(addr.String())
 			conn, err := net.Dial("tcp", addr.String())
 			if err != nil {
 				log.Printf("Cannot connect to worker %d \n", wid)
@@ -295,6 +297,8 @@ func (w *Worker) getAll(cubeInds []int) []DataPoint {
 				continue
 			}
 			msg, _ := json.Marshal(Message{Type: "PeerRequestAll", CubeIndex: v, SenderID: w.id})
+			log.Println(v)
+
 			conn.Write(msg)
 			defer conn.Close()
 			dpbuf := <-w.peerChan
