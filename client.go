@@ -14,7 +14,7 @@ import (
 const (
 	workerListernerPort = 9008
 	clientListenerPort  = 7008
-	workerNumber        = 14
+	workerNumber        = 9
 )
 
 type WorkerInfo struct {
@@ -30,7 +30,8 @@ type ClientInfo struct {
 type Client struct {
 	workerList     map[int]WorkerInfo
 	treeMetadata   *DTree
-	leafMap        map[int][]DataBatch
+	leafMap        map[int][]DataBatch //key is worker number
+	cubeList       map[int]int         //key: cube val: worker
 	clientListener net.Listener
 	msgChan        chan []byte
 }
@@ -63,6 +64,7 @@ func InitClient() (client *Client, err error) {
 		workerList:     make(map[int]WorkerInfo, workerNumber),
 		treeMetadata:   dTree,
 		leafMap:        make(map[int][]DataBatch, workerNumber),
+		cubeList:       make(map[int]int),
 		msgChan:        make(chan []byte),
 		clientListener: clientConn,
 	}
@@ -76,11 +78,12 @@ func InitClient() (client *Client, err error) {
 		10: "172.22.154.230", 11: "172.22.156.230", 12: "172.22.158.230",
 		13: "172.22.154.231", 14: "172.22.156.231", 15: "172.22.158.231",
 	}
-	for i := 0; i < workerNumber; i++ {
+	for i := 1; i < workerNumber; i++ {
 		client.workerList[i+1] = WorkerInfo{
 			id:      i + 1, // Client ID = 1-14, worker ID = 15
 			address: net.TCPAddr{IP: net.ParseIP(idip[i+1]), Port: workerListernerPort},
 		}
+
 	}
 
 	return client, err
@@ -96,10 +99,11 @@ func (cl *Client) Run(dataPath string) (err error) {
 
 	//log.Println("Start init client tree...")
 	err = cl.treeMetadata.UpdateTree(rawDataPoints)
+
 	if err != nil {
 		panic(err)
 	}
-
+	cl.Split()
 	//log.Printf("Tree build finished. Total %d dataPoints. Total number of nodes, include non-leaf, %d\n", len(rawDataPoints), len(cl.treeMetadata.Nodes))
 	cl.leafMap[2] = cl.treeMetadata.ToDataBatch()
 	// for _, batch := range cl.leafMap[2] {
@@ -130,8 +134,8 @@ func (cl *Client) Run(dataPath string) (err error) {
 
 // Execute List of queries and calculate the time duration of receiving all results
 func (cl *Client) Execute(qs []*Query) (err error) {
-	for i, q := range qs {
-		err := cl.executeQuery(q, i+2)
+	for _, q := range qs {
+		err := cl.executeQuery(q)
 		if err != nil {
 			log.Println(err)
 		}
@@ -145,9 +149,6 @@ func (cl *Client) Sync() (err error) {
 	treeMsg, _ := json.Marshal(Message{Type: "Tree", MsgBytes: tree})
 
 	for _, w := range cl.workerList {
-		// if w.id != 2 {
-		// 	continue
-		// }
 		log.Printf("Syncing...%d\n", w.id)
 		conn, err := net.Dial("tcp", w.address.String())
 		if err != nil {
@@ -179,10 +180,16 @@ func (cl *Client) Sync() (err error) {
 	return nil
 }
 
+func (cl *Client) findWorker(q *Query) int {
+	cubeInds, _ := cl.treeMetadata.EquatlitySearch(q.QueryDims, q.QueryDimVals)
+	log.Println(cubeInds)
+	return cl.cubeList[cubeInds[0]]
+}
+
 //TODO:
-func (cl *Client) executeQuery(q *Query, workerid int) (err error) {
+func (cl *Client) executeQuery(q *Query) (err error) {
 	//TODO: TreeSearch to find which worker to route query to
-	//workerid := cl.FindWorker(q)
+	workerid := cl.findWorker(q)
 	//send query to worker
 	query := MarshalQuery(q)
 	qmsg, _ := json.Marshal(Message{Type: "Query", MsgBytes: query})
@@ -237,6 +244,55 @@ func (cl *Client) HandleTCPConn(c net.Conn) {
 	log.Println(b)
 	if len(b) == 0 {
 		log.Println("No results found")
+	}
+
+}
+
+func (dTree *DTree) ObtainInd(indices []int) int {
+	currInd := int(0)
+	currNode := dTree.Nodes[0]
+	for _, ind := range indices {
+		if ind == 0 {
+			currInd = int(currNode.LInd)
+			currNode = dTree.Nodes[currInd]
+		} else {
+			currInd = int(currNode.RInd)
+			currNode = dTree.Nodes[currInd]
+		}
+	}
+	return currInd
+}
+
+func (cl *Client) getDataBatch(node *DTreeNode, nodeInd int, workerInd int) {
+	if node.IsLeaf {
+		cl.cubeList[nodeInd] = workerInd + 2
+		if _, exists := cl.leafMap[workerInd+2]; exists {
+			cl.leafMap[workerInd+2] = append(cl.leafMap[workerInd+2], DataBatch{nodeInd, node.Capacity, node.Dims, node.Mins, node.Maxs, cl.treeMetadata.NodeData[nodeInd]})
+		} else {
+			db := []DataBatch{DataBatch{nodeInd, node.Capacity, node.Dims, node.Mins, node.Maxs, cl.treeMetadata.NodeData[nodeInd]}}
+			cl.leafMap[workerInd+2] = db
+		}
+
+	} else {
+		leftInd := int(cl.treeMetadata.Nodes[nodeInd].LInd)
+		rightInd := int(cl.treeMetadata.Nodes[nodeInd].RInd)
+		cl.getDataBatch(&cl.treeMetadata.Nodes[leftInd], leftInd, workerInd)
+		cl.getDataBatch(&cl.treeMetadata.Nodes[rightInd], rightInd, workerInd)
+	}
+}
+
+func (cl *Client) Split() {
+	idx := []int{0, 0, 0}
+	for i := 0; i < 8; i++ {
+		t := i
+		idx[0] = t / 4
+		t = t % 4
+		idx[1] = t / 2
+		t = t % 2
+		idx[2] = t
+		nodeInd := cl.treeMetadata.ObtainInd(idx)
+		cl.leafMap[i+1] = make([]DataBatch, 0)
+		cl.getDataBatch(&cl.treeMetadata.Nodes[nodeInd], nodeInd, i)
 	}
 
 }
