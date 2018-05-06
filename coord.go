@@ -25,11 +25,11 @@ func bToMb(b uint64) uint64 {
 func Test(path string) {
 	//dPoints = dPoints[:20]
 	pDims := []uint{1, 0}
-	pCaps := []uint{100, 100}
+	pCaps := []uint{10, 10}
 
 	initMins := []float64{40.75 - 0.3, -73.925 - 0.3}
 	initMaxs := []float64{40.75 + 0.3, -73.925 + 0.3}
-	splitThresRatio := 0.4
+	splitThresRatio := float64(5)
 
 	fmt.Println("Start Initializing Tree...")
 
@@ -57,7 +57,12 @@ func Test(path string) {
 			panic(err)
 		}
 		for _, d := range dPoints {
-			qs = append(qs, d.GenerateFakeQuery())
+			//qs = append(qs, d.GenerateFakeEqualityQuery())
+			//qs = append(qs, d.GenerateFakeRangeQuery())
+			qs = append(qs, d.GenerateFakeKNNQuery())
+			if len(qs) >= 10000 {
+				break
+			}
 		}
 
 	}
@@ -100,24 +105,61 @@ func Test(path string) {
 	log.Printf("Time to load all data: &s\n", elapsed)
 
 	totalConflictNum := int(0)
+	totalOutputNum := int(0)
 	for i, q := range qs {
-		dataPoints, conflictNum, err := worker.EqualityQuery(q)
-		totalConflictNum += conflictNum
+		if i < 3 {
+			//continue
+		}
+		//dataPoints, conflictNum, err := worker.EqualityQuery(q)
+		//dataPoints, conflictNum, err := worker.RangeQuery(q)
+		//totalConflictNum += conflictNum
+		dataPoints, err := worker.KNNQuery(q)
 		if err != nil {
 			panic(err)
 		}
+		totalOutputNum += len(dataPoints)
 		if len(dataPoints) == 0 {
-			fmt.Println("Fail to find on query index %d\n", i)
+			fmt.Printf("Fail to find on query index %d\n", i)
+		} else if false {
+			fmt.Println("Query Info: ")
+			fmt.Println(q)
+			for _, dp := range dataPoints {
+				fmt.Println(dp)
+				fmt.Println(q.DistanceToCenter(&dp))
+			}
 		}
 
 	}
 	elapsed = time.Since(start)
 	log.Printf("Time Overall: &s\n", elapsed)
 	log.Printf("Total Conflict Number: %d, among %d queries\n", totalConflictNum, len(qs))
+	log.Printf("Total Output Number: %d, among %d queries\n", totalOutputNum, len(qs))
 }
 
 //GenerateFakeQuery ...
-func (dPoint *DataPoint) GenerateFakeQuery() *Query {
-	q1 := InitQuery(1, []uint{1, 0}, []float64{dPoint.getFloatValByDim(uint(1)), dPoint.getFloatValByDim(uint(0))}, []int{0, 0}, 5, "lala")
+func (dPoint *DataPoint) GenerateFakeEqualityQuery() *Query {
+	// Note!!! dPoint.getFloatValByDim(uint(1)) => latitude 40.5
+	//dPoint.getFloatValByDim(uint(0)) => longtitude -73.9
+	// queryDim [0] = 1 => 1st value corresponds to dim 1
+	// queryDim [1] = 0 => 2nd value corresponds to dim 0
+	q1 := InitQuery(0, []uint{1, 0}, []float64{dPoint.getFloatValByDim(uint(1)), dPoint.getFloatValByDim(uint(0))}, []int{0, 0}, -1, "equal")
+	return q1
+}
+
+func (dPoint *DataPoint) GenerateFakeRangeQuery() *Query {
+	// Note!!! dPoint.getFloatValByDim(uint(1)) => latitude 40.5
+	//dPoint.getFloatValByDim(uint(0)) => longtitude -73.9
+	// queryDim [0] = 0 => 1st value corresponds to dim 0
+	// queryDim [1] = 0 => 2nd value corresponds to dim 0
+	q1 := InitQuery(1, []uint{0, 0}, []float64{dPoint.getFloatValByDim(uint(0)) - 0.0000001, dPoint.getFloatValByDim(uint(0)) + 0.0000001}, []int{1, -1}, -1, "range")
+	return q1
+}
+
+func (dPoint *DataPoint) GenerateFakeKNNQuery() *Query {
+	// Note!!! dPoint.getFloatValByDim(uint(1)) => latitude 40.5
+	//dPoint.getFloatValByDim(uint(0)) => longtitude -73.9
+	// queryDim [0] = 0 => 1st value corresponds to dim 0
+	// queryDim [1] = 0 => 2nd value corresponds to dim 0
+	q1 := InitQuery(2, []uint{1, 0}, []float64{dPoint.getFloatValByDim(uint(1)) - 0.0000001, dPoint.getFloatValByDim(uint(0)) + 0.0000001}, []int{1, -1}, 5, "knn")
 	return q1
 }

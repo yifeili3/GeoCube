@@ -8,11 +8,23 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 )
 
 const (
-	extensionRatio float64 = 1. + 1e-13
+	extensionRatio float64 = 1. + 1e-6
 )
+
+func truncFloat(k float64) float64 {
+	digitAcc := fmt.Sprintf("%.10f", k)
+	f, _ := strconv.ParseFloat(digitAcc, 10)
+	return f
+}
+
+func trunc2String(k float64) string {
+	digitAcc := fmt.Sprintf("%.9f", k)
+	return digitAcc
+}
 
 // A PriorityQueue implements heap.Interface and holds DataPoints.
 /*
@@ -114,6 +126,7 @@ func CheckCachedCube(dTree *DTree, cachedCube []int, extendedData []float64) int
 
 func (worker *Worker) KNNQuery(query *Query) ([]DataPoint, error) {
 	centerData, err := query.ToDimFloatVal(worker.dTree)
+	//fmt.Println(centerData)
 	if err != nil {
 		return nil, err
 	}
@@ -142,32 +155,54 @@ func (worker *Worker) KNNQuery(query *Query) ([]DataPoint, error) {
 	extendedData := centerData
 	currentBoundDistance := float64(0)
 	currentDataDistance := float64(0)
-
+	metaCubeMap := make(map[[2]int]bool)
+	boundaryMap := make(map[string]bool)
 	for len(outputDataPoints) < query.K {
+		/*
+			fmt.Println("New Iteration /////////////")
+			forPrint := [2]float64{}
+			forPrint[0] = extendedData[0] - centerData[0]
+			forPrint[1] = extendedData[1] - centerData[1]
+			fmt.Println(forPrint)*/
 		extensionValid := true
 		cubeInd := CheckCachedCube(worker.dTree, cachedCube, extendedData)
+		currMetaInd := int(-1)
 		if cubeInd == -1 {
 			cubeInds, err = worker.dTree.EquatlitySearch(nil, extendedData)
 			if err != nil {
 				if cubeInds != nil && cubeInds[0] == -1 {
 					// Possible Non-error condition: extended Point is out of the DTree range
 					// Need to skip current extended Point
+					//fmt.Println("Extension Point out of range")
 					extensionValid = false
 				} else {
 					return nil, err
 				}
+			} else {
+				cubeInd = cubeInds[0]
+				cachedCube = append(cachedCube, cubeInd)
 			}
-			cubeInd = cubeInds[0]
 		}
-
-		if extensionValid {
-			currMetaInd, err := worker.dTree.Nodes[cubeInd].MapIndByVal(nil, extendedData)
+		if cubeInd != -1 {
+			//fmt.Println(cubeInd)
+			currMetaInd, err = worker.dTree.Nodes[cubeInd].MapIndByVal(nil, extendedData)
 			if err != nil {
 				return nil, err
 			}
+			metaCell := [2]int{cubeInd, currMetaInd}
+			if _, exists := metaCubeMap[metaCell]; exists {
+				extensionValid = false
+			} else {
+				metaCubeMap[metaCell] = true
+			}
+		}
 
+		if extensionValid {
 			metaIndList := make([]int, 1)
 			metaIndList[0] = currMetaInd
+
+			//fmt.Printf("Read data from MetaCube %d, CubeCell %d\n", cubeInd, currMetaInd)
+			//fmt.Println(metaCubeMap)
 			//Perform readBatch to force using cache, since ReadSingle doesn't cache metaCube
 			dataPoints := worker.db.ReadBatch(cubeInd, metaIndList)
 			for _, dp := range dataPoints {
@@ -182,12 +217,29 @@ func (worker *Worker) KNNQuery(query *Query) ([]DataPoint, error) {
 				return nil, err
 			} else {
 				for _, cP := range cornerPoints {
-					knnBp := new(KNNPoint)
-					knnBp.vals = cP
-					knnBp.distance = PointDistance(centerData, cP)
 					// Prevent duplicate boundary point insertion (which will cause infinite loop)
-					if knnBp.distance > currentBoundDistance {
+					// Hard code for 2D
+					boundKey := fmt.Sprintf("%s-%s", trunc2String(cP[0]), trunc2String(cP[1]))
+					if _, exists := boundaryMap[boundKey]; !exists {
+						knnBp := new(KNNPoint)
+						knnBp.vals = cP
+						knnBp.distance = PointDistance(centerData, cP)
+
+						if knnBp.distance < currentBoundDistance {
+							fmt.Println("A closer corner was proposed later")
+						}
+						//fmt.Println(cP)
+						//fmt.Println(boundaryMap)
+						/*
+							forPrint = [2]float64{}
+							forPrint[0] = cP[0] - centerData[0]
+							forPrint[1] = cP[1] - centerData[1]
+							fmt.Printf("%.15f,%.15f\n", forPrint[0], forPrint[1])
+						*/
+						//if knnBp.distance > currentDataDistance {
+						//}
 						heap.Push(boundaryPointsPQ, knnBp)
+						boundaryMap[boundKey] = true
 					}
 				}
 			}
@@ -196,25 +248,56 @@ func (worker *Worker) KNNQuery(query *Query) ([]DataPoint, error) {
 				return nil, err
 			} else {
 				for _, cP := range boundaryPoints {
-					knnBp := new(KNNPoint)
-					knnBp.vals = cP
-					knnBp.distance = PointDistance(centerData, cP)
 					// Prevent duplicate boundary point insertion (which will cause infinite loop)
-					if knnBp.distance > currentBoundDistance {
+					// Hard code for 2D
+					boundKey := fmt.Sprintf("%s-%s", trunc2String(cP[0]), trunc2String(cP[1]))
+					if _, exists := boundaryMap[boundKey]; !exists {
+						knnBp := new(KNNPoint)
+						knnBp.vals = cP
+						knnBp.distance = PointDistance(centerData, cP)
+
+						if knnBp.distance < currentBoundDistance {
+							fmt.Printf("A closer boundary was proposed later. cubeInd %d, meta%d \n", cubeInd, currMetaInd)
+							fmt.Println(cachedCube)
+							fmt.Println("boundary")
+							forPrint, forPrint2, _ := worker.dTree.Nodes[cubeInd].Boundary(currMetaInd)
+							forPrint[0] = forPrint[0] - centerData[0]
+							forPrint[1] = forPrint[1] - centerData[1]
+							forPrint2[0] = forPrint2[0] - centerData[0]
+							forPrint2[1] = forPrint2[1] - centerData[1]
+							fmt.Println(forPrint)
+							fmt.Println(forPrint2)
+							fmt.Println("end boundary")
+						}
+						/*
+							forPrint = [2]float64{}
+							forPrint[0] = cP[0] - centerData[0]
+							forPrint[1] = cP[1] - centerData[1]
+							fmt.Printf("%.15f,%.15f\n", forPrint[0], forPrint[1])
+						*/
 						heap.Push(boundaryPointsPQ, knnBp)
+						//if knnBp.distance > currentDataDistance {
+						//}
+						boundaryMap[boundKey] = true
 					}
 				}
 			}
 		}
 
-		botDPoint := heap.Pop(dataPointsPQ).(*KNNPoint)
 		botBPoint := heap.Pop(boundaryPointsPQ).(*KNNPoint)
 
-		// TODO: Need to dump redundant boundaryConstrains
-		// For example, the previous extended point is pushed back as well
-		// Need to analyze whether this condition will happen
-		for botDPoint.distance < botBPoint.distance {
+		for dataPointsPQ.Len() > 0 {
+			// TODO: Need to dump redundant boundaryConstrains
+			// For example, the previous extended point is pushed back as well
+			// Need to analyze whether this condition will happen
+			botDPoint := heap.Pop(dataPointsPQ).(*KNNPoint)
 			// Check algorithm/implementation correctness, and track current max distance
+			if botDPoint.distance > botBPoint.distance {
+				// Then, current DPoint should be push back again since current data may not be nearest
+				heap.Push(dataPointsPQ, botDPoint)
+				// And break loop
+				break
+			}
 			if botDPoint.distance < currentDataDistance {
 				err := errors.New(fmt.Sprintf("Data Priority Queue not in ascending order, len %d", dataPointsPQ.Len()))
 				fmt.Println(err)
@@ -223,15 +306,12 @@ func (worker *Worker) KNNQuery(query *Query) ([]DataPoint, error) {
 				currentBoundDistance = botDPoint.distance
 			}
 			outputDataPoints = append(outputDataPoints, *(botDPoint.dPoint))
-			botDPoint = heap.Pop(dataPointsPQ).(*KNNPoint)
 			// immediately return if enough points are found
 			if len(outputDataPoints) == query.K {
 				return outputDataPoints, nil
 			}
 		}
 
-		// Then, current DPoint should be push back again
-		heap.Push(dataPointsPQ, botDPoint)
 		if botBPoint.distance < currentBoundDistance {
 			err := errors.New(fmt.Sprintf("Boundary Priority Queue not in ascending order, len %d", boundaryPointsPQ.Len()))
 			fmt.Println(err)
@@ -239,8 +319,13 @@ func (worker *Worker) KNNQuery(query *Query) ([]DataPoint, error) {
 		} else {
 			currentBoundDistance = botBPoint.distance
 		}
+		/*
+			forPrint = [2]float64{}
+			forPrint[0] = botBPoint.vals[0] - centerData[0]
+			forPrint[1] = botBPoint.vals[1] - centerData[1]
+			fmt.Println(forPrint)
+		*/
 		extendedData = PointExtension(centerData, botBPoint.vals)
-
 	}
 
 	return nil, nil

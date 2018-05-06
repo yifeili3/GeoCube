@@ -7,7 +7,7 @@ import (
 )
 
 type Query struct {
-	//QueryType = 0, equal, 1, range, 2, range
+	//QueryType = 0, equal, 1, range, 2, knn
 	QueryType int
 	// QueryDims can be duplicated, so that both > < can be
 	// supported at the same time
@@ -55,6 +55,9 @@ func (query *Query) CheckPoint(dPoint *DataPoint) bool {
 
 // Compute the Euclidean distance between the datapoint and query center
 func (query *Query) DistanceToCenter(dPoint *DataPoint) float64 {
+	if query.QueryType != 2 || query.K <= 0 {
+		return float64(-1)
+	}
 	distance := float64(0)
 	for i, d := range query.QueryDims {
 		diff := dPoint.getFloatValByDim(d) - query.QueryDimVals[i]
