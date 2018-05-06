@@ -14,7 +14,7 @@ import (
 const (
 	workerListernerPort = 9008
 	clientListenerPort  = 7008
-	workerNumber        = 9
+	workerNumber        = 10
 )
 
 type WorkerInfo struct {
@@ -103,17 +103,20 @@ func (cl *Client) Run(dataPath string) (err error) {
 	if err != nil {
 		panic(err)
 	}
+
 	cl.Split()
 	//log.Printf("Tree build finished. Total %d dataPoints. Total number of nodes, include non-leaf, %d\n", len(rawDataPoints), len(cl.treeMetadata.Nodes))
-	cl.leafMap[2] = cl.treeMetadata.ToDataBatch()
+	//cl.leafMap[2] = cl.treeMetadata.ToDataBatch()
 	// for _, batch := range cl.leafMap[2] {
 	// 	log.Println(len(batch.DPoints))
 	// }
-	cl.leafMap[3] = cl.treeMetadata.ToDataBatch()
+	//cl.leafMap[3] = cl.treeMetadata.ToDataBatch()
 	// for _, batch := range cl.leafMap[3] {
 	// 	log.Println(len(batch.DPoints))
 	// }
 
+	log.Println(cl.leafMap[2][0].CubeId)
+	log.Println(cl.leafMap[9][0].CubeId)
 	err = cl.Sync()
 
 	var qs []*Query
@@ -164,8 +167,10 @@ func (cl *Client) Sync() (err error) {
 		}
 		log.Println("Tree Sent...")
 
+		log.Println(cl.leafMap[w.id])
 		for _, batch := range cl.leafMap[w.id] {
 			b, _ := json.Marshal(&batch)
+			log.Println("Sending databatch..%d\n", batch.CubeId)
 			dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
 			conn, err = net.Dial("tcp", w.address.String())
 			_, err = conn.Write(dataBatchMsg)
@@ -266,12 +271,8 @@ func (dTree *DTree) ObtainInd(indices []int) int {
 func (cl *Client) getDataBatch(node *DTreeNode, nodeInd int, workerInd int) {
 	if node.IsLeaf {
 		cl.cubeList[nodeInd] = workerInd + 2
-		if _, exists := cl.leafMap[workerInd+2]; exists {
-			cl.leafMap[workerInd+2] = append(cl.leafMap[workerInd+2], DataBatch{nodeInd, node.Capacity, node.Dims, node.Mins, node.Maxs, cl.treeMetadata.NodeData[nodeInd]})
-		} else {
-			db := []DataBatch{DataBatch{nodeInd, node.Capacity, node.Dims, node.Mins, node.Maxs, cl.treeMetadata.NodeData[nodeInd]}}
-			cl.leafMap[workerInd+2] = db
-		}
+		cl.leafMap[workerInd+2] = append(cl.leafMap[workerInd+2], DataBatch{nodeInd, node.Capacity, node.Dims, node.Mins, node.Maxs, cl.treeMetadata.NodeData[nodeInd]})
+		log.Printf("leaf index %d, lenth %d, worker id %d, datapoint len %d\n", nodeInd, len(cl.leafMap[workerInd+2]), workerInd+2, len(cl.leafMap[workerInd+2][0].DPoints))
 
 	} else {
 		leftInd := int(cl.treeMetadata.Nodes[nodeInd].LInd)
@@ -291,8 +292,8 @@ func (cl *Client) Split() {
 		t = t % 2
 		idx[2] = t
 		nodeInd := cl.treeMetadata.ObtainInd(idx)
-		cl.leafMap[i+1] = make([]DataBatch, 0)
+		cl.leafMap[i+2] = make([]DataBatch, 0)
 		cl.getDataBatch(&cl.treeMetadata.Nodes[nodeInd], nodeInd, i)
+		log.Println(cl.leafMap[i+2])
 	}
-
 }
