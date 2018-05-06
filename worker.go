@@ -191,17 +191,21 @@ func (w *Worker) send(dest string, msg []byte) {
 func (w *Worker) ClientListener() chan net.Conn {
 	ch := make(chan net.Conn)
 	accept := 0
-	for {
-		//log.Println("Accepting Requests >>>>")
-		client, err := w.clientListener.Accept()
-		if err != nil {
-			log.Println("can not accept:", err)
+	go func() {
+		for {
+			//log.Println("Accepting Requests >>>>")
+			client, err := w.clientListener.Accept()
+			if err != nil {
+				log.Println("can not accept:", err)
+				continue
+			}
+			accept++
+			//log.Printf("Accepted: %d\n", accept)
+			ch <- client
+			//go w.HandleClientRequests(client)
 		}
-		accept++
-		//log.Printf("Accepted: %d\n", accept)
-		ch <- client
-		//go w.HandleClientRequests(client)
-	}
+	}()
+	return ch
 }
 
 func (w *Worker) executeQuery(q *Query) (dp []DataPoint, err error) {
