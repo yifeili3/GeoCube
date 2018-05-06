@@ -119,14 +119,14 @@ func (cl *Client) Run(dataPath string) (err error) {
 	err = cl.Sync()
 
 	var qs []*Query
-	for _, dp := range rawDataPoints {
-		qs = append(qs, dp.GenerateFakeEqualityQuery())
-	}
-	qs = qs[:100]
 	// for _, dp := range rawDataPoints {
-	// 	qs = append(qs, dp.GenerateFakeRangeQuery())
+	// 	qs = append(qs, dp.GenerateFakeEqualityQuery())
 	// }
-	// qs = qs[:2]
+	// qs = qs[:100]
+	for _, dp := range rawDataPoints {
+		qs = append(qs, dp.GenerateFakeRangeQuery())
+	}
+	qs = qs[:2]
 
 	//Start benchmark
 	time.Sleep(2 * time.Second)
