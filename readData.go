@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/csv"
 	"io"
-	"log"
 	"os"
 	"strconv"
 )
@@ -33,10 +32,6 @@ func importCSV2DataPoint(path string, attributeOrder AttributeDataPointMapping) 
 	count := 0
 	for {
 		line, err := reader.Read()
-		if err != nil {
-			log.Println(err)
-		}
-		//fmt.Println(line)
 		count++
 		if count == 1 {
 			continue
