@@ -16,11 +16,13 @@ import (
 const (
 	tcpWorkerListenerPort = 9008
 	tcpClientListenerPort = 7008
+	udpPeerListenerPort   = 8008
 )
 
 type peerInfo struct {
 	id      int
 	address net.TCPAddr
+	udpaddr net.UDPAddr
 }
 
 //Worker ...
@@ -30,6 +32,7 @@ type Worker struct {
 	peerList       map[int]peerInfo
 	cubeList       map[int]int
 	clientListener net.Listener
+	peerConn       *net.UDPConn
 	clientInfo     peerInfo
 	db             *DB
 	peerChan       chan []byte
@@ -58,6 +61,8 @@ func InitWorker() (w *Worker, err error) {
 		13: "172.22.154.231", 14: "172.22.156.231", 15: "172.22.158.231",
 	}
 
+	peermsgconn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP(idip[GetID(idip)]), Port: udpPeerListenerPort})
+
 	w = &Worker{
 		id:             GetID(idip),
 		peerList:       make(map[int]peerInfo, 13),
@@ -66,6 +71,7 @@ func InitWorker() (w *Worker, err error) {
 		db:             tempdb,
 		clientInfo:     peerInfo{id: 1, address: net.TCPAddr{IP: net.ParseIP(idip[1]), Port: tcpClientListenerPort}},
 		peerChan:       make(chan []byte),
+		peerConn:       peermsgconn,
 	}
 
 	for i := 0; i < 14; i++ {
@@ -73,8 +79,10 @@ func InitWorker() (w *Worker, err error) {
 			w.peerList[i] = peerInfo{
 				id:      i + 1,
 				address: net.TCPAddr{IP: net.ParseIP(idip[i]), Port: tcpWorkerListenerPort},
+				udpaddr: net.UDPAddr{IP: net.ParseIP(idip[i]), Port: udpPeerListenerPort},
 			}
 		}
+
 	}
 
 	return w, err
@@ -124,26 +132,7 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 		res, _ := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
 		//log.Printf("Sending results back to client.. Size:%d\n", len(b))
 		w.send(w.clientInfo.address.String(), res)
-	case "PeerRequestAll":
-		cubeInds := msg.CubeIndex
-		//Read cube from db
-		var dp []DataPoint
-		for _, cubeInd := range cubeInds {
-			dPoints := w.db.ReadAll(cubeInd)
-			dp = append(dp, dPoints...)
-		}
-		b, _ := json.Marshal(dp)
-		dpmsg, _ := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
-		addr := w.peerList[msg.SenderID].address
-		w.send(addr.String(), dpmsg)
 
-	case "PeerRequestBatch":
-		//cubeInds := msg.CubeIndex
-		//metaIdx := msg.MetaIndex
-
-	case "DataPoints":
-		// use a channel here to pass dataPoints to RangeQuery
-		w.peerChan <- msg.MsgBytes
 	default:
 		log.Println("Unrecognized message")
 	}
@@ -188,24 +177,65 @@ func (w *Worker) send(dest string, msg []byte) {
 }
 
 //ClientListener ...
-func (w *Worker) ClientListener() chan net.Conn {
-	ch := make(chan net.Conn)
+func (w *Worker) ClientListener() {
+	//ch := make(chan net.Conn)
 	accept := 0
-	go func() {
-		for {
-			//log.Println("Accepting Requests >>>>")
-			client, err := w.clientListener.Accept()
-			if err != nil {
-				log.Println("can not accept:", err)
-				continue
-			}
-			accept++
-			//log.Printf("Accepted: %d\n", accept)
-			ch <- client
-			//go w.HandleClientRequests(client)
+	for {
+		//log.Println("Accepting Requests >>>>")
+		client, err := w.clientListener.Accept()
+		if err != nil {
+			log.Println("can not accept:", err)
+			continue
 		}
-	}()
-	return ch
+		accept++
+		//log.Printf("Accepted: %d\n", accept)
+
+		go w.HandleClientRequests(client)
+	}
+}
+
+func (w *Worker) PeerListener() {
+	for {
+		var buf bytes.Buffer
+		_, err := io.Copy(&buf, w.peerConn)
+		if err != nil {
+			fmt.Println("Error copying from connection!")
+		}
+
+		msg := new(Message)
+		err = json.Unmarshal(buf.Bytes(), &msg)
+		if err != nil {
+			log.Println("Error Parse message:", err)
+		}
+
+		log.Printf("Incoming message %s\n", msg.Type)
+		switch msg.Type {
+		case "PeerRequestAll":
+			cubeInds := msg.CubeIndex
+			//Read cube from db
+			var dp []DataPoint
+			for _, cubeInd := range cubeInds {
+				dPoints := w.db.ReadAll(cubeInd)
+				dp = append(dp, dPoints...)
+			}
+			b, _ := json.Marshal(dp)
+			dpmsg, _ := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
+			src := w.peerList[msg.SenderID].udpaddr
+
+			dest := w.peerList[w.id].udpaddr
+			conn, _ := net.DialUDP("udp", &src, &dest)
+			conn.Write(dpmsg)
+			conn.Close()
+		case "PeerRequestBatch":
+			//cubeInds := msg.CubeIndex
+			//metaIdx := msg.MetaIndex
+
+		case "DataPoints":
+			// use a channel here to pass dataPoints to RangeQuery
+			w.peerChan <- msg.MsgBytes
+		}
+
+	}
 }
 
 func (w *Worker) executeQuery(q *Query) (dp []DataPoint, err error) {
@@ -293,10 +323,14 @@ func (w *Worker) getAll(cubeInds []int) []DataPoint {
 				dPoints = append(dPoints, temp...)
 			}
 		} else {
-			addr := w.peerList[wid].address
+			dest := w.peerList[wid].udpaddr
+			src := w.peerList[w.id].udpaddr
+
 			log.Println("Requesting datapoints from %d\n", wid)
-			log.Println(addr.String())
-			conn, err := net.Dial("tcp", addr.String())
+			//log.Println(addr.String())
+			//conn, err := net.Dial("tcp", addr.String())
+			log.Println("sending udp message")
+			conn, err := net.DialUDP("udp", &src, &dest)
 			if err != nil {
 				log.Printf("Cannot connect to worker %d \n", wid)
 				log.Println(err)
@@ -307,6 +341,7 @@ func (w *Worker) getAll(cubeInds []int) []DataPoint {
 
 			conn.Write(msg)
 			defer conn.Close()
+			log.Println("Wait here")
 			dpbuf := <-w.peerChan
 			var dp []DataPoint
 			json.Unmarshal(dpbuf, &dp)
