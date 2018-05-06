@@ -34,6 +34,7 @@ type Client struct {
 	cubeList       map[int]int         //key: cube val: worker
 	clientListener net.Listener
 	msgChan        chan []byte
+	start          time.Time
 }
 
 //InitClient ...
@@ -115,22 +116,23 @@ func (cl *Client) Run(dataPath string) (err error) {
 	// 	log.Println(len(batch.DPoints))
 	// }
 
-	log.Println(cl.leafMap[2][0].CubeId)
-	log.Println(cl.leafMap[9][0].CubeId)
 	err = cl.Sync()
 
 	var qs []*Query
+	// for _, dp := range rawDataPoints {
+	// 	qs = append(qs, dp.GenerateFakeEqualityQuery())
+	// }
+	// qs = qs[:100]
 	for _, dp := range rawDataPoints {
-		qs = append(qs, generateFakeQuery(&dp))
+		qs = append(qs, dp.GenerateFakeRangeQuery())
 	}
 	qs = qs[:2]
 
 	//Start benchmark
 	time.Sleep(2 * time.Second)
-	start := time.Now()
+	cl.start = time.Now()
 	cl.Execute(qs)
-	elapsed := time.Since(start)
-	log.Printf("Total time used in executing %d queries: %dns \n ", len(qs), elapsed.Nanoseconds)
+
 	//end benchmark
 	return err
 }
@@ -167,10 +169,10 @@ func (cl *Client) Sync() (err error) {
 		}
 		log.Println("Tree Sent...")
 
-		log.Println(cl.leafMap[w.id])
+		//log.Println(cl.leafMap[w.id])
 		for _, batch := range cl.leafMap[w.id] {
 			b, _ := json.Marshal(&batch)
-			log.Println("Sending databatch..%d\n", batch.CubeId)
+			//log.Println("Sending databatch..%d\n", batch.CubeId)
 			dataBatchMsg, _ := json.Marshal(Message{Type: "DataBatch", MsgBytes: b})
 			conn, err = net.Dial("tcp", w.address.String())
 			_, err = conn.Write(dataBatchMsg)
@@ -186,9 +188,15 @@ func (cl *Client) Sync() (err error) {
 }
 
 func (cl *Client) findWorker(q *Query) int {
-	cubeInds, _ := cl.treeMetadata.EquatlitySearch(q.QueryDims, q.QueryDimVals)
-	//log.Println(cubeInds)
-	return cl.cubeList[cubeInds[0]]
+	if q.QueryType == 0 {
+		cubeInds, _ := cl.treeMetadata.EquatlitySearch(q.QueryDims, q.QueryDimVals)
+		//log.Println(cubeInds)
+		return cl.cubeList[cubeInds[0]]
+	} else if q.QueryType == 1 {
+		return 2
+	} else {
+		return 0
+	}
 }
 
 //TODO:
@@ -211,11 +219,6 @@ func (cl *Client) executeQuery(q *Query) (err error) {
 	}
 
 	return nil
-}
-
-func generateFakeQuery(dPoint *DataPoint) *Query {
-	q1 := InitQuery(0, []uint{1, 0}, []float64{dPoint.getFloatValByDim(uint(1)), dPoint.getFloatValByDim(uint(0))}, []int{0, 0}, -1, "lala")
-	return q1
 }
 
 func (cl *Client) TCPListener() {
@@ -246,7 +249,10 @@ func (cl *Client) HandleTCPConn(c net.Conn) {
 	//convert to DataPoints
 	var b []DataPoint
 	json.Unmarshal(msg.MsgBytes, &b)
-	//log.Println(b)
+	log.Println(b)
+	// log.Println("Received results")
+	// elapsed := time.Since(cl.start)
+	// log.Printf("Total time used in executing queries: %dns \n ", elapsed.Nanoseconds)
 	if len(b) == 0 {
 		log.Println("No results found")
 	}
