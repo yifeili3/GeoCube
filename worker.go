@@ -132,20 +132,18 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 			dPoints := w.db.ReadAll(cubeInd)
 			dp = append(dp, dPoints...)
 		}
-		b := json.Marshal(dp)
-		dpmsg := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
+		b, _ := json.Marshal(dp)
+		dpmsg, _ := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
 		addr := w.peerList[msg.SenderID].address
 		w.send(addr.String(), dpmsg)
 
 	case "PeerRequestBatch":
-		cubeInds := msg.CubeIndex
-		metaIdx := msg.MetaIndex
+		//cubeInds := msg.CubeIndex
+		//metaIdx := msg.MetaIndex
 
 	case "DataPoints":
 		// use a channel here to pass dataPoints to RangeQuery
-		var dp []DataPoint
-		json.Unmarshal(msg.MsgBytes, &dp)
-		w.peerChan <- dp
+		w.peerChan <- msg.MsgBytes
 	default:
 		log.Println("Unrecognized message")
 	}
@@ -305,4 +303,5 @@ func (w *Worker) getAll(cubeInds []int) []DataPoint {
 			dPoints = append(dPoints, dp...)
 		}
 	}
+	return dPoints
 }

@@ -14,7 +14,7 @@ import (
 const (
 	workerListernerPort = 9008
 	clientListenerPort  = 7008
-	workerNumber        = 10
+	workerNumber        = 8
 )
 
 type WorkerInfo struct {
@@ -78,9 +78,9 @@ func InitClient() (client *Client, err error) {
 		10: "172.22.154.230", 11: "172.22.156.230", 12: "172.22.158.230",
 		13: "172.22.154.231", 14: "172.22.156.231", 15: "172.22.158.231",
 	}
-	for i := 1; i < workerNumber; i++ {
+	for i := 1; i <= workerNumber; i++ {
 		client.workerList[i+1] = WorkerInfo{
-			id:      i + 1, // Client ID = 1-14, worker ID = 15
+			id:      i + 1, // Client ID = 1, worker ID = 2-9
 			address: net.TCPAddr{IP: net.ParseIP(idip[i+1]), Port: workerListernerPort},
 		}
 
@@ -187,7 +187,7 @@ func (cl *Client) Sync() (err error) {
 
 func (cl *Client) findWorker(q *Query) int {
 	cubeInds, _ := cl.treeMetadata.EquatlitySearch(q.QueryDims, q.QueryDimVals)
-	log.Println(cubeInds)
+	//log.Println(cubeInds)
 	return cl.cubeList[cubeInds[0]]
 }
 
@@ -246,7 +246,7 @@ func (cl *Client) HandleTCPConn(c net.Conn) {
 	//convert to DataPoints
 	var b []DataPoint
 	json.Unmarshal(msg.MsgBytes, &b)
-	log.Println(b)
+	//log.Println(b)
 	if len(b) == 0 {
 		log.Println("No results found")
 	}
@@ -272,7 +272,7 @@ func (cl *Client) getDataBatch(node *DTreeNode, nodeInd int, workerInd int) {
 	if node.IsLeaf {
 		cl.cubeList[nodeInd] = workerInd + 2
 		cl.leafMap[workerInd+2] = append(cl.leafMap[workerInd+2], DataBatch{nodeInd, node.Capacity, node.Dims, node.Mins, node.Maxs, cl.treeMetadata.NodeData[nodeInd]})
-		log.Printf("leaf index %d, lenth %d, worker id %d, datapoint len %d\n", nodeInd, len(cl.leafMap[workerInd+2]), workerInd+2, len(cl.leafMap[workerInd+2][0].DPoints))
+		//log.Printf("leaf index %d, lenth %d, worker id %d, datapoint len %d\n", nodeInd, len(cl.leafMap[workerInd+2]), workerInd+2, len(cl.leafMap[workerInd+2][0].DPoints))
 
 	} else {
 		leftInd := int(cl.treeMetadata.Nodes[nodeInd].LInd)
@@ -294,6 +294,6 @@ func (cl *Client) Split() {
 		nodeInd := cl.treeMetadata.ObtainInd(idx)
 		cl.leafMap[i+2] = make([]DataBatch, 0)
 		cl.getDataBatch(&cl.treeMetadata.Nodes[nodeInd], nodeInd, i)
-		log.Println(cl.leafMap[i+2])
+		//log.Println(cl.leafMap[i+2])
 	}
 }
