@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"strconv"
+	"sync"
 )
 
 const (
@@ -202,15 +203,19 @@ func (w *Worker) ClientListener() {
 }
 
 func (w *Worker) PeerListener() {
+
 	p := make([]byte, 10000000)
 	for {
+		log.Println("fuck")
 		n, remote, _ := w.peerConn.ReadFromUDP(p)
 		log.Println(remote)
 		if n == 0 {
+
 			continue
 		} else {
-			msg := new(Message)
-			err := json.Unmarshal(p, &msg)
+			var msg Message
+			err := json.Unmarshal(p[:n], &msg)
+
 			if err != nil {
 				log.Println("Error Parse message:", err)
 			}
@@ -225,14 +230,23 @@ func (w *Worker) PeerListener() {
 					dPoints := w.db.ReadAll(cubeInd)
 					dp = append(dp, dPoints...)
 				}
+				log.Println("get data point")
 				b, _ := json.Marshal(dp)
 				dpmsg, _ := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
-				src := w.peerList[msg.SenderID].udpaddr
-
-				dest := w.peerList[w.id].udpaddr
-				conn, _ := net.DialUDP("udp", &src, &dest)
-				conn.Write(dpmsg)
-				conn.Close()
+				src := w.peerList[w.id].udpaddr
+				src.Port = udpPeerSenderPort
+				dest := w.peerList[msg.SenderID].udpaddr
+				dest.Port = udpPeerListenerPort
+				for {
+					conn, err := net.DialUDP("udp", &src, &dest)
+					if err == nil {
+						conn.Write(dpmsg)
+						conn.Close()
+						break
+					} else {
+						log.Println(err)
+					}
+				}
 			case "PeerRequestBatch":
 				//cubeInds := msg.CubeIndex
 				//metaIdx := msg.MetaIndex
@@ -323,37 +337,41 @@ func (w *Worker) getAll(cubeInds []int) []DataPoint {
 	}
 
 	var dPoints []DataPoint
-	for wid, v := range m {
-		if wid == w.id {
-			for _, cubeInd := range v {
-				temp := w.db.ReadAll(cubeInd)
-				dPoints = append(dPoints, temp...)
-			}
-		} else {
-			dest := w.peerList[wid].udpaddr
-			src := w.peerList[w.id].udpaddr
-			log.Println("Requesting datapoints from %d\n", wid)
-			log.Println("sending udp message")
-			for {
-				conn, err := net.DialUDP("udp", &src, &dest)
-				log.Println("Sending udp packet")
-				if err == nil {
-					msg, _ := json.Marshal(Message{Type: "PeerRequestAll", CubeIndex: v, SenderID: w.id})
-
-					conn.Write(msg)
-					conn.Close()
-					break
+	var wg sync.WaitGroup
+	nbGoroutines := len(m)
+	wg.Add(nbGoroutines)
+	go func() {
+		for wid, v := range m {
+			if wid == w.id {
+				for _, cubeInd := range v {
+					temp := w.db.ReadAll(cubeInd)
+					dPoints = append(dPoints, temp...)
 				}
+			} else {
+				dest := w.peerList[wid].udpaddr
+				src := w.peerList[w.id].udpaddr
+				log.Printf("Requesting datapoints from %d\n", wid)
+				log.Println("sending udp message")
+				for {
+					conn, err := net.DialUDP("udp", &src, &dest)
+					log.Println("Sending udp packet")
+					if err == nil {
+						msg, _ := json.Marshal(Message{Type: "PeerRequestAll", CubeIndex: v, SenderID: w.id})
+						conn.Write(msg)
+						conn.Close()
+						break
+					}
+				}
+
+				log.Println("Wait here")
+				dpbuf := <-w.peerChan
+				var dp []DataPoint
+				json.Unmarshal(dpbuf, &dp)
+				dPoints = append(dPoints, dp...)
 			}
-
-			log.Println(v)
-
-			log.Println("Wait here")
-			dpbuf := <-w.peerChan
-			var dp []DataPoint
-			json.Unmarshal(dpbuf, &dp)
-			dPoints = append(dPoints, dp...)
 		}
-	}
+		wg.Done()
+		log.Println("Done one")
+	}()
 	return dPoints
 }
