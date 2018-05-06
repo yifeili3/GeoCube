@@ -112,7 +112,7 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 		log.Println("Error Parse message:", err)
 	}
 
-	log.Printf("Incoming message %s\n", msg.Type)
+	//log.Printf("Incoming message %s\n", msg.Type)
 	switch msg.Type {
 	case "Tree":
 		w.dTree = UnMarshalTree(msg.MsgBytes)
@@ -275,7 +275,7 @@ func (worker *Worker) EqualityQuery(query *Query) ([]DataPoint, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	fmt.Println(cubeInds)
+	//fmt.Println(cubeInds)
 
 	var metaInds []int
 	for _, cubeInd := range cubeInds {
