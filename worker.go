@@ -188,7 +188,8 @@ func (w *Worker) send(dest string, msg []byte) {
 }
 
 //ClientListener ...
-func (w *Worker) ClientListener() {
+func (w *Worker) ClientListener() chan net.Conn {
+	ch := make(chan net.Conn)
 	accept := 0
 	for {
 		//log.Println("Accepting Requests >>>>")
@@ -198,7 +199,8 @@ func (w *Worker) ClientListener() {
 		}
 		accept++
 		//log.Printf("Accepted: %d\n", accept)
-		go w.HandleClientRequests(client)
+		ch <- client
+		//go w.HandleClientRequests(client)
 	}
 }
 

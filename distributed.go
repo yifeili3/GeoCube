@@ -14,7 +14,10 @@ func main() {
 	} else if mode == "worker" {
 		worker, _ := InitWorker()
 
-		worker.ClientListener()
+		ch := worker.ClientListener()
+		for {
+			go worker.HandleClientRequests(<-ch)
+		}
 	}
 	// loop
 }
