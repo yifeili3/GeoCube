@@ -24,10 +24,11 @@ type DataPoint struct {
 }
 
 type Message struct {
-	Type      string //Tree/DataBatch/DataPoints/Query/Error/PeerRequest
+	Type      string //Tree/DataBatch/DataPoints/Query/Error/PeerRequestAll/PeerRequestBatch
 	MsgBytes  []byte
-	CubeIndex int
-	MetaIndex int
+	CubeIndex []int
+	MetaIndex []int
+	SenderID  int
 }
 
 type DataBatch struct {

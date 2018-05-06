@@ -28,9 +28,11 @@ type Worker struct {
 	id             int
 	dTree          *DTree
 	peerList       map[int]peerInfo
+	cubeList       map[int]int
 	clientListener net.Listener
 	clientInfo     peerInfo
 	db             *DB
+	peerChan       chan []byte
 }
 
 //InitWorker ...
@@ -59,9 +61,11 @@ func InitWorker() (w *Worker, err error) {
 	w = &Worker{
 		id:             GetID(idip),
 		peerList:       make(map[int]peerInfo, 13),
+		cubeList:       make(map[int]int),
 		clientListener: clientConn,
 		db:             tempdb,
 		clientInfo:     peerInfo{id: 1, address: net.TCPAddr{IP: net.ParseIP(idip[1]), Port: tcpClientListenerPort}},
+		peerChan:       make(chan []byte),
 	}
 
 	for i := 0; i < 14; i++ {
@@ -97,6 +101,7 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 	case "Tree":
 		w.dTree = UnMarshalTree(msg.MsgBytes)
 		log.Println("Finish updating tree")
+		w.Split()
 	case "DataBatch":
 		var databatch DataBatch
 		err = json.Unmarshal(msg.MsgBytes, &databatch)
@@ -105,9 +110,7 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 		}
 
 		w.db.Feed(&databatch)
-		//log.Println("Finish updating tree")
 	case "Query":
-		//TODO:: parse query and execute it
 		q := UnMarshalQuery(msg.MsgBytes)
 		dataPoints, err := w.executeQuery(q)
 		if err != nil {
@@ -121,23 +124,57 @@ func (w *Worker) HandleClientRequests(client net.Conn) {
 		res, _ := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
 		//log.Printf("Sending results back to client.. Size:%d\n", len(b))
 		w.send(w.clientInfo.address.String(), res)
-	case "PeerRequest":
-		// cubeIdx := msg.CubeIndex
-		// metaIdx := msg.MetaIndex
-		// //Read cube from db
-		// dPoints := w.db.ReadSingle(cubeIdx, metaIdx)
-		// b := MarshalDataPoints(dPoints)
-		// w.send(peer, b)
+	case "PeerRequestAll":
+		cubeInds := msg.CubeIndex
+		//Read cube from db
+		var dp []DataPoint
+		for _, cubeInd := range cubeInds {
+			dPoints := w.db.ReadAll(cubeInd)
+			dp = append(dp, dPoints...)
+		}
+		b := json.Marshal(dp)
+		dpmsg := json.Marshal(Message{Type: "DataPoints", MsgBytes: b})
+		addr := w.peerList[msg.SenderID].address
+		w.send(addr.String(), dpmsg)
+
+	case "PeerRequestBatch":
+		cubeInds := msg.CubeIndex
+		metaIdx := msg.MetaIndex
+
 	case "DataPoints":
 		// use a channel here to pass dataPoints to RangeQuery
-		dp := new([]DataPoint)
-		json.Unmarshal(msg.MsgBytes, dp)
-		// dpChan <-dp
+		var dp []DataPoint
+		json.Unmarshal(msg.MsgBytes, &dp)
+		w.peerChan <- dp
 	default:
 		log.Println("Unrecognized message")
 	}
 }
 
+func (w *Worker) getDataBatch(node *DTreeNode, nodeInd int, workerInd int) {
+	if node.IsLeaf {
+		w.cubeList[nodeInd] = workerInd + 2
+	} else {
+		leftInd := int(w.dTree.Nodes[nodeInd].LInd)
+		rightInd := int(w.dTree.Nodes[nodeInd].RInd)
+		w.getDataBatch(&w.dTree.Nodes[leftInd], leftInd, workerInd)
+		w.getDataBatch(&w.dTree.Nodes[rightInd], rightInd, workerInd)
+	}
+}
+
+func (w *Worker) Split() {
+	idx := []int{0, 0, 0}
+	for i := 0; i < 8; i++ {
+		t := i
+		idx[0] = t / 4
+		t = t % 4
+		idx[1] = t / 2
+		t = t % 2
+		idx[2] = t
+		nodeInd := w.dTree.ObtainInd(idx)
+		w.getDataBatch(&w.dTree.Nodes[nodeInd], nodeInd, i)
+	}
+}
 func (w *Worker) send(dest string, msg []byte) {
 
 	conn, err := net.Dial("tcp", dest)
@@ -172,6 +209,7 @@ func (w *Worker) executeQuery(q *Query) (dp []DataPoint, err error) {
 	case 0:
 		dp, _, err = w.EqualityQuery(q)
 	case 1:
+		dp, _, err = w.RangeQuery(q)
 	case 2:
 	}
 	return
@@ -217,23 +255,54 @@ func (worker *Worker) RangeQuery(query *Query) ([]DataPoint, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	//fmt.Println(cubeInds)
 
 	var dataPoints []DataPoint
 	totalDrawnNum := int(0)
-	for _, cubeInd := range cubeInds {
 
-		dPoints := worker.db.ReadAll(cubeInd)
-		//fmt.Println(fmt.Sprintf("CubeInd: %d, MetaInd %d", cubeInd, metaInds[i]))
-		//fmt.Println(dPoints)
-		for _, dp := range dPoints {
-			if query.CheckPoint(&dp) {
-				//fmt.Println("found")
-				dataPoints = append(dataPoints, dp)
-			}
+	dPoints := worker.getAll(cubeInds)
+
+	//wait for results
+
+	//Check dpoints
+	for _, dp := range dPoints {
+		if query.CheckPoint(&dp) {
+			//fmt.Println("found")
+			dataPoints = append(dataPoints, dp)
 		}
-		totalDrawnNum += len(dPoints)
 	}
+	totalDrawnNum += len(dPoints)
 	overDrawnNum := totalDrawnNum - len(dataPoints)
 	return dataPoints, overDrawnNum, nil
+}
+
+func (w *Worker) getAll(cubeInds []int) []DataPoint {
+	m := make(map[int][]int)
+	for _, cubeInd := range cubeInds {
+		m[w.cubeList[cubeInd]] = append(m[w.cubeList[cubeInd]], cubeInd)
+	}
+
+	var dPoints []DataPoint
+	for wid, v := range m {
+		if wid == w.id {
+			for _, cubeInd := range v {
+				temp := w.db.ReadAll(cubeInd)
+				dPoints = append(dPoints, temp...)
+			}
+		} else {
+			addr := w.peerList[wid].address
+			conn, err := net.Dial("tcp", addr.String())
+			if err != nil {
+				log.Printf("Cannot connect to worker %d \n", wid)
+				log.Println(err)
+				continue
+			}
+			msg, _ := json.Marshal(Message{Type: "PeerRequestAll", CubeIndex: v, SenderID: w.id})
+			conn.Write(msg)
+			defer conn.Close()
+			dpbuf := <-w.peerChan
+			var dp []DataPoint
+			json.Unmarshal(dpbuf, &dp)
+			dPoints = append(dPoints, dp...)
+		}
+	}
 }
