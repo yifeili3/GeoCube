@@ -17,7 +17,7 @@ import (
 const (
 	dbRootPath         = "./db/"
 	dataArraySize      = 0 // Jade: should this dataArraySize to be initialized as this much?
-	cacheSize          = 5000
+	cacheSize          = 25000
 	batchReadThres     = 20
 	tcpPort            = 1003
 	randomSampleRatio  = 0.1

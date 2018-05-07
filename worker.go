@@ -297,7 +297,9 @@ func (worker *Worker) EqualityQuery(query *Query) ([]DataPoint, int, error) {
 		for _, dp := range dPoints {
 			if query.CheckPoint(&dp) {
 				//fmt.Println("found")
-				dataPoints = append(dataPoints, dp)
+				for i:=0;i<100;i++{
+					dataPoints = append(dataPoints, dp)
+				}
 			}
 		}
 		conflictNum = len(dPoints) - len(dataPoints)
